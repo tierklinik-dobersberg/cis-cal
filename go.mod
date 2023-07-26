@@ -7,7 +7,7 @@ require (
 	github.com/bufbuild/protovalidate-go v0.2.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.7.0
-	github.com/tierklinik-dobersberg/apis v0.0.0-20230726091243-9014bed18a47
+	github.com/tierklinik-dobersberg/apis v0.0.0-20230726104020-2e9f750cf1b1
 	github.com/tierklinik-dobersberg/cis v0.0.0-20221117114909-db8d495a4502
 	go.opentelemetry.io/otel v1.16.0
 	golang.org/x/oauth2 v0.10.0

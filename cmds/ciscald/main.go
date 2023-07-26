@@ -64,8 +64,6 @@ func main() {
 		}),
 	)
 
-	calService := services.New(app)
-
 	interceptors := connect.WithInterceptors(
 		logInterceptor,
 		validatorInterceptor,
@@ -74,7 +72,12 @@ func main() {
 
 	serveMux := http.NewServeMux()
 
+	calService := services.New(app)
 	path, handler := calendarv1connect.NewCalendarServiceHandler(calService, interceptors)
+	serveMux.Handle(path, handler)
+
+	holidayService := services.NewHolidayService(cfg.DefaultCountry)
+	path, handler = calendarv1connect.NewHolidayServiceHandler(holidayService, interceptors)
 	serveMux.Handle(path, handler)
 
 	corsOpts := cors.Config{

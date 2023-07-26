@@ -6,5 +6,6 @@ func PrepareRootCommand(root *cli.Root) {
 	root.AddCommand(
 		GetCalendarCommand(root),
 		GetEventsCommand(root),
+		GetHolidayCommand(root),
 	)
 }

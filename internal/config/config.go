@@ -17,6 +17,7 @@ type Config struct {
 	IdmURL          string   `json:"idmUrl"`
 	AllowedOrigins  []string `json:"allowedOrigins"`
 	ListenAddress   string   `json:"listen"`
+	DefaultCountry  string   `json:"defaultCountry"`
 }
 
 // LoadConfig loads the configuration file from cfgPath.
@@ -53,6 +54,10 @@ func LoadConfig(cfgPath string) (Config, error) {
 
 	if cfg.IdmURL == "" {
 		cfg.IdmURL = os.Getenv("IDM_URL")
+	}
+
+	if cfg.DefaultCountry == "" {
+		cfg.DefaultCountry = "AT"
 	}
 
 	return cfg, nil
