@@ -1,0 +1,4 @@
+.secrets
+config.test.yml
+go.work
+go.work.sum
