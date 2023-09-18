@@ -82,7 +82,7 @@ func main() {
 
 	corsOpts := cors.Config{
 		AllowedOrigins:   cfg.AllowedOrigins,
-		AllowCredentials: false, // we don't handle authentication on our own here
+		AllowCredentials: true, // we need allow-credentials here as browsers need to send the token for the forward-auth endpoint
 		Debug:            true,
 	}
 

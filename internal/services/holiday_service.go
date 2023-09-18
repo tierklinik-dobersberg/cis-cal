@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bufbuild/connect-go"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
@@ -79,4 +80,38 @@ func (svc *HolidayService) GetHoliday(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&calendarv1.GetHolidayResponse{
 		Holidays: result,
 	}), nil
+}
+
+func (svc *HolidayService) NumberOfWorkDays(ctx context.Context, req *connect.Request[calendarv1.NumberOfWorkDaysRequest]) (*connect.Response[calendarv1.NumberOfWorkDaysResponse], error) {
+	from := req.Msg.From.AsTime()
+	to := req.Msg.To.AsTime()
+
+	response := &calendarv1.NumberOfWorkDaysResponse{}
+
+	country := req.Msg.Country
+	if country == "" {
+		country = svc.country
+	}
+
+L:
+	for iter := from; iter.Before(to) || iter.Equal(to); iter = iter.AddDate(0, 0, 1) {
+		switch iter.Weekday() {
+		case time.Saturday, time.Sunday:
+			response.NumberOfWeekendDays++
+			continue
+		default:
+			isHoliday, err := svc.getter.IsHoliday(ctx, country, iter)
+			if err != nil {
+				break L
+			}
+
+			if isHoliday {
+				response.NumberOfHolidays++
+			} else {
+				response.NumberOfWorkDays++
+			}
+		}
+	}
+
+	return connect.NewResponse(response), nil
 }
