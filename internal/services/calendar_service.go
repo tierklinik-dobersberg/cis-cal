@@ -340,7 +340,7 @@ func extractCalendarId(ctx context.Context, profile *idmv1.Profile) string {
 
 	extrapb := profile.User.Extra
 	if extrapb != nil {
-		calVal := extrapb.Fields["calendarId"]
+		calVal := extrapb.Fields["calendarID"]
 		if calVal != nil {
 			switch v := calVal.Kind.(type) {
 			case *structpb.Value_StringValue:

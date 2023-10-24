@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
-	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 )
 
@@ -16,7 +15,7 @@ func GetCalendarCommand(root *cli.Root) *cobra.Command {
 		Use:     "calendar",
 		Aliases: []string{"calendars", "cal"},
 		Run: func(cmd *cobra.Command, args []string) {
-			cli := calendarv1connect.NewCalendarServiceClient(root.HttpClient, root.BaseURL)
+			cli := root.Calendar()
 
 			calendars, err := cli.ListCalendars(context.Background(), connect.NewRequest(&calendarv1.ListCalendarsRequest{}))
 			if err != nil {

@@ -9,7 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
-	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -29,7 +28,7 @@ func GetEventsCommand(root *cli.Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "events",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli := calendarv1connect.NewCalendarServiceClient(root.HttpClient, root.BaseURL)
+			cli := root.Calendar()
 
 			req := &calendarv1.ListEventsRequest{}
 

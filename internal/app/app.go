@@ -13,12 +13,12 @@ import (
 type App struct {
 	Config config.Config
 	Users  idmv1connect.UserServiceClient
+	Roles  idmv1connect.RoleServiceClient
 
 	repo.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
-	userClient := idmv1connect.NewUserServiceClient(http.DefaultClient, cfg.IdmURL)
 
 	service, err := repo.New(ctx, cfg)
 	if err != nil {
@@ -29,7 +29,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Service: service,
 
 		Config: cfg,
-		Users:  userClient,
+		Users:  idmv1connect.NewUserServiceClient(http.DefaultClient, cfg.IdmURL),
+		Roles:  idmv1connect.NewRoleServiceClient(http.DefaultClient, cfg.IdmURL),
 	}
 
 	return app, nil

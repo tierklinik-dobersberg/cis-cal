@@ -21,7 +21,8 @@ func GetHolidayCommand(root *cli.Root) *cobra.Command {
 		Use:     "holiday",
 		Aliases: []string{"holidays"},
 		Run: func(cmd *cobra.Command, args []string) {
-			cli := calendarv1connect.NewHolidayServiceClient(root.HttpClient, root.BaseURL)
+			// FIXME(ppacher): add a Holiday() method to github.com/tierklinik-dobersberg/apis/pkg/cli#Root
+			cli := calendarv1connect.NewHolidayServiceClient(root.HttpClient, root.Config().BaseURLS.Calendar)
 
 			if year == 0 {
 				year = time.Now().Year()

@@ -10,6 +10,7 @@ import (
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/sirupsen/logrus"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
+	"github.com/tierklinik-dobersberg/apis/pkg/auth"
 	"github.com/tierklinik-dobersberg/apis/pkg/cors"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/apis/pkg/privacy"
@@ -18,6 +19,7 @@ import (
 	"github.com/tierklinik-dobersberg/cis-cal/internal/app"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/config"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/services"
+	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 func main() {
@@ -53,6 +55,12 @@ func main() {
 		logrus.Fatalf("failed to prepare proto validator: %s", err)
 	}
 
+	authInterceptor := auth.NewAuthAnnotationInterceptor(
+		protoregistry.GlobalFiles,
+		auth.NewIDMRoleResolver(app.Roles),
+		auth.RemoteHeaderExtractor,
+	)
+
 	logInterceptor := log.NewLoggingInterceptor()
 	validatorInterceptor := validator.NewInterceptor(protoValidator)
 	privacyInterceptor := privacy.NewFilterInterceptor(
@@ -66,6 +74,7 @@ func main() {
 
 	interceptors := connect.WithInterceptors(
 		logInterceptor,
+		authInterceptor,
 		validatorInterceptor,
 		privacyInterceptor,
 	)
