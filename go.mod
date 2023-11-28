@@ -8,7 +8,7 @@ require (
 	github.com/mennanov/fmutils v0.2.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.7.0
-	github.com/tierklinik-dobersberg/apis v0.0.0-20231024081328-529e8c93c041
+	github.com/tierklinik-dobersberg/apis v0.0.0-20231030103027-6926297c06d8
 	github.com/tierklinik-dobersberg/cis v0.0.0-20231013064558-a154a3943d4d
 	go.opentelemetry.io/otel v1.19.0
 	golang.org/x/oauth2 v0.13.0

@@ -43,6 +43,7 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 			Id:       cal.ID,
 			Name:     cal.Name,
 			Timezone: cal.Timezone,
+			Color:    cal.Color,
 		})
 	}
 
@@ -231,6 +232,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 				Id:       cal.ID,
 				Name:     cal.Name,
 				Timezone: cal.Timezone,
+				Color:    cal.Color,
 			}
 		}
 

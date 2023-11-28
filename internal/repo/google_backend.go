@@ -121,6 +121,7 @@ func (svc *googleCalendarBackend) ListCalendars(ctx context.Context) ([]Calendar
 			Name:     item.Summary,
 			Timezone: item.TimeZone,
 			Location: loc,
+			Color:    item.BackgroundColor,
 		})
 		// immediately prepare the calendar cache
 		if _, err = svc.cacheFor(ctx, item.Id); err != nil {

@@ -19,6 +19,7 @@ type Calendar struct {
 	Name     string
 	Timezone string
 	Location *time.Location
+	Color    string
 }
 
 type Event struct {
