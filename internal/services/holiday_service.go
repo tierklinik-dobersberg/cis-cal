@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,23 +48,33 @@ func (svc *HolidayService) GetHoliday(ctx context.Context, req *connect.Request[
 
 		var protoType calendarv1.HolidayType
 
-		switch p.Type {
-		case "Public":
+		if slices.Contains(p.Types, "Public") {
 			protoType = calendarv1.HolidayType_PUBLIC
-		case "Bank":
-			protoType = calendarv1.HolidayType_BANK
-		case "School":
-			protoType = calendarv1.HolidayType_SCHOOL
-		case "Authorities":
-			protoType = calendarv1.HolidayType_AUTHORITIES
-		case "Optional":
-			protoType = calendarv1.HolidayType_OPTIONAL
-		case "Observance":
-			protoType = calendarv1.HolidayType_OBSERVANCE
-		default:
-			log.L(ctx).Errorf("unsupported public holiday type %q", p.Type)
+		} else {
+			for _, pType := range p.Types {
+				switch pType {
+				case "Public":
+					protoType = calendarv1.HolidayType_PUBLIC
+				case "Bank":
+					protoType = calendarv1.HolidayType_BANK
+				case "School":
+					protoType = calendarv1.HolidayType_SCHOOL
+				case "Authorities":
+					protoType = calendarv1.HolidayType_AUTHORITIES
+				case "Optional":
+					protoType = calendarv1.HolidayType_OPTIONAL
+				case "Observance":
+					protoType = calendarv1.HolidayType_OBSERVANCE
+				default:
+					log.L(ctx).Errorf("unsupported public holiday type %q", pType)
 
-			protoType = calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
+					protoType = calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
+
+					continue
+				}
+
+				break
+			}
 		}
 
 		result = append(result, &calendarv1.PublicHoliday{

@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-const apiHostFormat = "https://date.nager.at/Api/v2/PublicHolidays/%d/%s"
+const apiHostFormat = "https://date.nager.at/api/v3/publicholidays/%d/%s"
 
 func apiURL(country string, year int) string {
 	return fmt.Sprintf(apiHostFormat, year, country)
@@ -39,7 +39,7 @@ type PublicHoliday struct {
 	Global      bool   `json:"global"`
 
 	// Type may be  Public, Bank, School, Authorities, Optional, Observance
-	Type string `json:"type"`
+	Types []string `json:"types"`
 }
 
 // Is checks if p is on d.
