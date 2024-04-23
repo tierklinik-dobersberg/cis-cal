@@ -163,7 +163,7 @@ func parseDescription(desc string) (string, *StructuredEvent, error) {
 		}
 	}
 	if !foundSectionStart {
-		return "", nil, nil
+		return desc, nil, nil
 	}
 
 	reader := strings.NewReader(strings.Join(sectionLines, "\n"))

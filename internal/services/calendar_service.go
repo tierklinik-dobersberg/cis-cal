@@ -303,6 +303,10 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 
 	var duration time.Duration
 	if end := req.Msg.End; end != nil {
+		if err := end.CheckValid(); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid value for field end: %w", err))
+		}
+
 		et := end.AsTime()
 		m.EndTime = &et
 
