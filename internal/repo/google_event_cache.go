@@ -57,7 +57,7 @@ func (ec *googleEventCache) watch(ctx context.Context) {
 	waitTime := time.Minute
 	firstLoad := true
 	for {
-		success := ec.loadEvents(ctx, !firstLoad)
+		success := ec.loadEvents(ctx)
 		if success {
 			waitTime = time.Minute
 		} else {
@@ -81,7 +81,7 @@ func (ec *googleEventCache) watch(ctx context.Context) {
 	}
 }
 
-func (ec *googleEventCache) loadEvents(ctx context.Context, emit bool) bool {
+func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	ec.rw.Lock()
 	defer ec.rw.Unlock()
 
@@ -102,7 +102,7 @@ func (ec *googleEventCache) loadEvents(ctx context.Context, emit bool) bool {
 			call.PageToken(pageToken)
 		}
 
-		res, err := call.Do()
+		res, err := call.Context(ctx).Do()
 		if err != nil {
 			if apiErr, ok := err.(*googleapi.Error); ok && apiErr.Code == http.StatusGone {
 				// start over without a sync token
@@ -118,7 +118,7 @@ func (ec *googleEventCache) loadEvents(ctx context.Context, emit bool) bool {
 		}
 
 		for _, item := range res.Items {
-			ec.syncAndEmit(ctx, item, emit)
+			_, _ = ec.syncEvent(ctx, item)
 		}
 		updatesProcessed += len(res.Items)
 
@@ -153,10 +153,6 @@ func (ec *googleEventCache) loadEvents(ctx context.Context, emit bool) bool {
 	return true
 }
 
-func (ec *googleEventCache) syncAndEmit(ctx context.Context, item *calendar.Event, emit bool) {
-	_, _ = ec.syncEvent(ctx, item)
-}
-
 func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event) (*Event, string) {
 	foundAtIndex := -1
 	for idx, evt := range ec.events {
@@ -176,7 +172,7 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 		}
 
 		// this should be an update
-		evt, err := convertToEvent(ctx, ec.calID, item)
+		evt, err := googleEventToModel(ctx, ec.calID, item)
 		if err != nil {
 			logrus.Errorf("failed to convert event: %s", err)
 			return nil, ""
@@ -186,7 +182,7 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 		return evt, "updated"
 	}
 
-	evt, err := convertToEvent(ctx, ec.calID, item)
+	evt, err := googleEventToModel(ctx, ec.calID, item)
 	if err != nil {
 		logrus.Errorf("failed to convert event: %s", err)
 		return nil, ""
@@ -246,6 +242,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 	defer ec.rw.RUnlock()
 	if search.FromTime.Before(ec.minTime) && !ec.minTime.IsZero() {
 		logrus.Infof("not using cache: search.from (%s) is before minTime (%s)", search.FromTime, ec.minTime)
+
 		return nil, false
 	}
 
@@ -256,8 +253,16 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 		if search.ToTime != nil {
 			startInRange = startInRange && (search.ToTime.Equal(evt.StartTime) || search.ToTime.After(evt.StartTime))
 		}
+
 		if startInRange {
-			res = append(res, evt)
+			if search.EventID != nil {
+				if evt.ID == *search.EventID {
+					logrus.Infof("found event with id %q in cache", *search.EventID)
+					return []Event{evt}, true
+				}
+			} else {
+				res = append(res, evt)
+			}
 		}
 	}
 

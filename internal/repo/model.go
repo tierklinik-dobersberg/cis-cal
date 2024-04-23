@@ -44,6 +44,7 @@ type StructuredEvent struct {
 type EventSearchOptions struct {
 	FromTime *time.Time
 	ToTime   *time.Time
+	EventID  *string
 }
 
 func (s *EventSearchOptions) From(t time.Time) *EventSearchOptions {
@@ -77,7 +78,13 @@ func WithEventsBefore(before time.Time) SearchOption {
 	}
 }
 
-func convertToEvent(ctx context.Context, calid string, item *calendar.Event) (*Event, error) {
+func WithEventId(id string) SearchOption {
+	return func(eso *EventSearchOptions) {
+		eso.EventID = &id
+	}
+}
+
+func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (*Event, error) {
 	var (
 		err   error
 		start time.Time

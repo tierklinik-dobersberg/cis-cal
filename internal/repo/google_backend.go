@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/config"
 	"github.com/tierklinik-dobersberg/cis/pkg/trace"
@@ -19,6 +22,7 @@ import (
 	"golang.org/x/oauth2/google"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
 
@@ -29,8 +33,11 @@ type SearchOption func(*EventSearchOptions)
 type Service interface {
 	ListCalendars(ctx context.Context) ([]Calendar, error)
 	ListEvents(ctx context.Context, calendarID string, filter ...SearchOption) ([]Event, error)
-	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) error
+	LoadEvent(ctx context.Context, calendarID string, eventID string, ignoreCache bool) (*Event, error)
+	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) (*Event, error)
 	DeleteEvent(ctx context.Context, calID, eventID string) error
+	MoveEvent(ctx context.Context, originCalendarId, eventId, targetCalendarId string) (event *Event, err error)
+	UpdateEvent(ctx context.Context, event Event) (*Event, error)
 }
 
 type googleCalendarBackend struct {
@@ -155,7 +162,7 @@ func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID str
 	return svc.loadEvents(ctx, calendarID, opts)
 }
 
-func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) error {
+func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) (*Event, error) {
 	ctx, sp := otel.Tracer("").Start(ctx, "google.backend#CreateEvent")
 	defer sp.End()
 
@@ -174,7 +181,7 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 		enc := json.NewEncoder(buf)
 
 		if err := enc.Encode(data); err != nil {
-			return err
+			return nil, err
 		}
 
 		description = strings.TrimSpace(description) + "\n\n[CIS]\n" + buf.String()
@@ -190,11 +197,11 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 			DateTime: startTime.Add(duration).Format(time.RFC3339),
 		},
 		Status: "confirmed",
-	}).Do()
+	}).Context(ctx).Do()
 	if err != nil {
 		trace.RecordAndLog(ctx, err)
 
-		return fmt.Errorf("failed to insert event upstream: %w", err)
+		return nil, fmt.Errorf("failed to insert event upstream: %w", err)
 	}
 	logrus.Infof("created event with id %s", res.Id)
 
@@ -202,11 +209,58 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 		cache.triggerSync()
 	}
 
-	return nil
+	return googleEventToModel(ctx, calID, res)
+}
+
+func (svc *googleCalendarBackend) UpdateEvent(ctx context.Context, event Event) (*Event, error) {
+	evt, err := svc.Service.Events.Update(event.CalendarID, event.ID, &calendar.Event{
+		Summary:     event.Summary,
+		Description: event.Description,
+		Start: &calendar.EventDateTime{
+			DateTime: event.StartTime.Format(time.RFC3339),
+		},
+		End: &calendar.EventDateTime{
+			DateTime: event.EndTime.Format(time.RFC3339),
+		},
+		Status: "confirmed",
+	}).Context(ctx).Do()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if cache, err := svc.cacheFor(ctx, event.CalendarID); err == nil && cache != nil {
+		cache.triggerSync()
+	} else {
+		logrus.Errorf("[update] failed to trigger sync for event calendar id %q: %s", event.CalendarID, err)
+	}
+
+	return googleEventToModel(ctx, event.CalendarID, evt)
+}
+
+func (svc *googleCalendarBackend) MoveEvent(ctx context.Context, originCalendarId string, eventId string, targetCalendarId string) (*Event, error) {
+	result, err := svc.Service.Events.Move(originCalendarId, eventId, targetCalendarId).Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if cache, err := svc.cacheFor(ctx, originCalendarId); err == nil && cache != nil {
+		cache.triggerSync()
+	} else {
+		logrus.Errorf("[move] failed to trigger sync for origin calendar id %q: %s", originCalendarId, err)
+	}
+
+	if cache, err := svc.cacheFor(ctx, targetCalendarId); err == nil && cache != nil {
+		cache.triggerSync()
+	} else {
+		logrus.Errorf("[move] failed to trigger sync for target calendar id %q: %s", targetCalendarId, err)
+	}
+
+	return googleEventToModel(ctx, targetCalendarId, result)
 }
 
 func (svc *googleCalendarBackend) DeleteEvent(ctx context.Context, calID, eventID string) error {
-	err := svc.Service.Events.Delete(calID, eventID).Do()
+	err := svc.Service.Events.Delete(calID, eventID).Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("failed to delete event upstream: %w", err)
 	}
@@ -241,6 +295,35 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 	return cache, nil
 }
 
+func (svc *googleCalendarBackend) LoadEvent(ctx context.Context, calendarID, eventID string, ignoreCache bool) (*Event, error) {
+	opts := &EventSearchOptions{
+		EventID: &eventID,
+	}
+	if !ignoreCache {
+		if cache, err := svc.cacheFor(ctx, calendarID); err == nil && cache != nil {
+			events, ok := cache.tryLoadFromCache(ctx, opts)
+			if ok && len(events) == 1 {
+				return &events[0], nil
+			}
+		}
+	}
+
+	evt, err := svc.Service.Events.Get(calendarID, eventID).Context(ctx).Do()
+	if err != nil {
+		var googleError *googleapi.Error
+		if errors.As(err, &googleError) {
+			switch googleError.Code {
+			case http.StatusNotFound, http.StatusGone:
+				return nil, connect.NewError(connect.CodeNotFound, googleError)
+			}
+		}
+
+		return nil, err
+	}
+
+	return googleEventToModel(ctx, calendarID, evt)
+}
+
 // trunk-ignore(golangci-lint/cyclop)
 func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID string, searchOpts *EventSearchOptions) ([]Event, error) {
 	call := svc.Events.List(calendarID).ShowDeleted(false).SingleEvents(true)
@@ -255,6 +338,10 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 			call = call.TimeMax(searchOpts.ToTime.Format(time.RFC3339))
 			key += fmt.Sprintf("-%s", searchOpts.ToTime.Format(time.RFC3339))
 		}
+
+		if searchOpts.EventID != nil {
+			key += "-" + *searchOpts.EventID
+		}
 	}
 
 	res, err, shared := svc.loadGroup.Do(key, func() (interface{}, error) {
@@ -264,19 +351,30 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 			if pageToken != "" {
 				call.PageToken(pageToken)
 			}
-			res, err := call.Do()
+			res, err := call.Context(ctx).Do()
 			if err != nil {
 				return nil, fmt.Errorf("failed to retrieve page from upstream: %w", err)
 			}
 
 			for _, item := range res.Items {
-				evt, err := convertToEvent(ctx, calendarID, item)
+				evt, err := googleEventToModel(ctx, calendarID, item)
+
 				if err != nil {
 					logrus.Errorf(err.Error())
 
 					continue
 				}
-				events = append(events, *evt)
+
+				// if we're searching for a single event ID, we can check for that ID and
+				// exit early
+				if searchOpts.EventID != nil {
+					if evt.ID == *searchOpts.EventID {
+						return []Event{*evt}, nil
+					}
+				} else {
+					events = append(events, *evt)
+				}
+
 			}
 
 			if res.NextPageToken != "" {
@@ -290,6 +388,7 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 
 		return events, nil
 	})
+
 	svc.loadGroup.Forget(key)
 	if shared {
 		logrus.Infof("shared calendar load between multiple callers")

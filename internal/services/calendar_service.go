@@ -237,36 +237,12 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 
 		for idx, e := range events {
-			var endTime *timestamppb.Timestamp
-			if e.EndTime != nil {
-				endTime = timestamppb.New(*e.EndTime)
+			protoEvent, err := modelToProtoEvent(ctx, e)
+			if err != nil {
+				return nil, err
 			}
 
-			var any *anypb.Any
-			if e.Data != nil {
-				extra := &calendarv1.CustomerAnnotation{
-					CustomerSource:  e.Data.CustomerSource,
-					CustomerId:      e.Data.CustomerID,
-					AnimalIds:       e.Data.AnimalID,
-					CreatedByUserId: e.Data.CreatedBy,
-				}
-
-				any, err = anypb.New(extra)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			calendarEvents.Events[idx] = &calendarv1.CalendarEvent{
-				Id:          e.ID,
-				CalendarId:  e.CalendarID,
-				StartTime:   timestamppb.New(e.StartTime),
-				EndTime:     endTime,
-				FullDay:     e.FullDayEvent,
-				ExtraData:   any,
-				Summary:     e.Summary,
-				Description: e.Description,
-			}
+			calendarEvents.Events[idx] = protoEvent
 		}
 
 		// do not add empty messages
@@ -279,6 +255,42 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	fmutils.Filter(response, readMask)
 
 	return connect.NewResponse(response), nil
+}
+
+func modelToProtoEvent(_ context.Context, model repo.Event) (*calendarv1.CalendarEvent, error) {
+	var endTime *timestamppb.Timestamp
+	var any *anypb.Any
+	var err error
+
+	if model.EndTime != nil {
+		endTime = timestamppb.New(*model.EndTime)
+	}
+
+	if model.Data != nil {
+		extra := &calendarv1.CustomerAnnotation{
+			CustomerSource:  model.Data.CustomerSource,
+			CustomerId:      model.Data.CustomerID,
+			AnimalIds:       model.Data.AnimalID,
+			CreatedByUserId: model.Data.CreatedBy,
+		}
+
+		any, err = anypb.New(extra)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &calendarv1.CalendarEvent{
+		Id:          model.ID,
+		CalendarId:  model.CalendarID,
+		StartTime:   timestamppb.New(model.StartTime),
+		EndTime:     endTime,
+		FullDay:     model.FullDayEvent,
+		ExtraData:   any,
+		Summary:     model.Summary,
+		Description: model.Description,
+	}, nil
+
 }
 
 func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Request[calendarv1.CreateEventRequest]) (*connect.Response[calendarv1.CreateEventResponse], error) {
@@ -300,31 +312,190 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 	}
 
 	if extra := req.Msg.ExtraData; extra != nil {
-		switch extra.TypeUrl {
-		case (string(new(calendarv1.CustomerAnnotation).ProtoReflect().Descriptor().FullName())):
-			var msg calendarv1.CustomerAnnotation
+		var err error
 
-			if err := extra.UnmarshalTo(&msg); err != nil {
-				return nil, connect.NewError(connect.CodeInvalidArgument, err)
-			}
-
-			m.Data = &repo.StructuredEvent{
-				CustomerSource: msg.CustomerSource,
-				CustomerID:     msg.CustomerId,
-				AnimalID:       msg.AnimalIds,
-				CreatedBy:      msg.CreatedByUserId,
-			}
-
-		default:
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupport data for ExtraData"))
+		m.Data, err = svc.convertExtraData(ctx, extra)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	if err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Data); err != nil {
+	newEvent, err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Data)
+	if err != nil {
 		return nil, err
 	}
 
-	return connect.NewResponse(&calendarv1.CreateEventResponse{ /* FIXME */ }), nil
+	protoEvent, err := modelToProtoEvent(ctx, *newEvent)
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&calendarv1.CreateEventResponse{
+		Event: protoEvent,
+	}), nil
+}
+
+func (svc *CalendarService) convertExtraData(_ context.Context, extra *anypb.Any) (*repo.StructuredEvent, error) {
+	switch extra.TypeUrl {
+	case (string(new(calendarv1.CustomerAnnotation).ProtoReflect().Descriptor().FullName())):
+		var msg calendarv1.CustomerAnnotation
+
+		if err := extra.UnmarshalTo(&msg); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+
+		return &repo.StructuredEvent{
+			CustomerSource: msg.CustomerSource,
+			CustomerID:     msg.CustomerId,
+			AnimalID:       msg.AnimalIds,
+			CreatedBy:      msg.CreatedByUserId,
+		}, nil
+
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupport data for ExtraData"))
+	}
+}
+
+func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Request[calendarv1.UpdateEventRequest]) (*connect.Response[calendarv1.UpdateEventResponse], error) {
+	msg := req.Msg
+
+	evt, err := svc.repo.LoadEvent(ctx, msg.CalendarId, msg.EventId, true)
+	if err != nil {
+		return nil, err
+	}
+
+	paths := []string{
+		"name",
+		"description",
+		"start",
+		"end",
+		"extra_data",
+	}
+
+	if um := msg.GetUpdateMask().GetPaths(); len(um) > 0 {
+		paths = um
+	}
+
+	for _, p := range paths {
+		switch p {
+		case "name":
+			if msg.Name == "" {
+				return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name field is required"))
+			}
+
+			evt.Summary = msg.Name
+
+		case "description":
+			evt.Description = msg.Description
+
+		case "start":
+			if err := msg.Start.CheckValid(); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid value for field start: %w", err))
+			}
+
+			evt.StartTime = msg.Start.AsTime()
+
+			if evt.StartTime.IsZero() {
+				return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid value for field start: %w", err))
+			}
+
+		case "end":
+			if msg.End == nil {
+				evt.EndTime = nil
+			} else {
+				if err := msg.End.CheckValid(); err != nil {
+					return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid value for field end: %w", err))
+				}
+
+				endTime := msg.End.AsTime()
+
+				if endTime.IsZero() {
+					evt.EndTime = nil
+				} else {
+					evt.EndTime = &endTime
+				}
+			}
+
+		case "extra_data":
+			if extra := msg.ExtraData; extra != nil {
+				evt.Data, err = svc.convertExtraData(ctx, msg.ExtraData)
+			} else {
+				evt.Data = nil
+			}
+
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid update_mask path %q", p))
+		}
+	}
+
+	updatedEvent, err := svc.repo.UpdateEvent(ctx, *evt)
+	if err != nil {
+		return nil, err
+	}
+
+	protoEvent, err := modelToProtoEvent(ctx, *updatedEvent)
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&calendarv1.UpdateEventResponse{
+		Event: protoEvent,
+	}), nil
+}
+
+func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[calendarv1.MoveEventRequest]) (*connect.Response[calendarv1.MoveEventResponse], error) {
+	originCalendarID := req.Msg.GetSourceCalendarId()
+	if originCalendarID == "" {
+		var err error
+		originCalendarID, err = svc.resolveUserCalendar(ctx, req.Msg.GetSourceUserId())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	targetCalendarID := req.Msg.GetTargetCalendarId()
+	if targetCalendarID == "" {
+		var err error
+		targetCalendarID, err = svc.resolveUserCalendar(ctx, req.Msg.GetTargetUserId())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	event, err := svc.repo.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
+	if err != nil {
+		return nil, err
+	}
+
+	protoEvent, err := modelToProtoEvent(ctx, *event)
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&calendarv1.MoveEventResponse{
+		Event: protoEvent,
+	}), nil
+}
+
+func (svc *CalendarService) resolveUserCalendar(ctx context.Context, id string) (string, error) {
+	user, err := svc.repo.Users.GetUser(ctx, connect.NewRequest(&idmv1.GetUserRequest{
+		Search: &idmv1.GetUserRequest_Id{
+			Id: id,
+		},
+		FieldMask: &fieldmaskpb.FieldMask{
+			Paths: []string{"profile.user.extra"},
+		},
+	}))
+
+	if err != nil {
+		return "", err
+	}
+
+	if cal := extractCalendarId(ctx, user.Msg.GetProfile()); cal != "" {
+		return cal, nil
+	}
+
+	return "", fmt.Errorf("no calendar associated with user %q", id)
 }
 
 func (svc *CalendarService) DeleteEvent(ctx context.Context, req *connect.Request[calendarv1.DeleteEventRequest]) (*connect.Response[calendarv1.DeleteEventResponse], error) {
