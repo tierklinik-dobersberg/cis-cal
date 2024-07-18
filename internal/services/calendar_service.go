@@ -55,9 +55,19 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 	switch v := req.Msg.SearchTime.(type) {
 	case *calendarv1.ListEventsRequest_Date:
-		day, err := time.Parse("2006/01/02", v.Date)
+		var (
+			day time.Time
+			err error
+		)
+
+		if strings.Contains(v.Date, "/") {
+			day, err = time.Parse("2006/01/02", v.Date)
+		} else {
+			day, err = time.Parse("2006-01-02", v.Date)
+		}
+
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid format for date field, expected YYYY-MM-DD or YYYY/MM/DD"))
 		}
 
 		nextDay := day.Add(time.Hour * 24)
