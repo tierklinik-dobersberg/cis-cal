@@ -3,14 +3,21 @@ package repo
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
 
+	connect "github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
+	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
+	eventsv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1"
+	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type googleEventCache struct {
@@ -21,9 +28,10 @@ type googleEventCache struct {
 	firstLoadDone chan struct{}
 	trigger       chan struct{}
 
-	calID  string
-	events []Event
-	svc    *calendar.Service
+	calID        string
+	events       []Event
+	svc          *calendar.Service
+	eventService eventsv1connect.EventServiceClient
 }
 
 func (ec *googleEventCache) String() string {
@@ -31,13 +39,14 @@ func (ec *googleEventCache) String() string {
 }
 
 // nolint:unparam
-func newCache(ctx context.Context, id string, loc *time.Location, svc *calendar.Service) (*googleEventCache, error) {
+func newCache(ctx context.Context, id string, loc *time.Location, svc *calendar.Service, eventCli eventsv1connect.EventServiceClient) (*googleEventCache, error) {
 	cache := &googleEventCache{
 		calID:         id,
 		svc:           svc,
 		location:      loc,
 		firstLoadDone: make(chan struct{}),
 		trigger:       make(chan struct{}),
+		eventService:  eventCli,
 	}
 
 	go cache.watch(ctx)
@@ -118,7 +127,31 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		}
 
 		for _, item := range res.Items {
-			_, _ = ec.syncEvent(ctx, item)
+			evt, change := ec.syncEvent(ctx, item)
+
+			req := &calendarv1.CalendarChangeEvent{
+				Calendar: ec.calID,
+			}
+
+			switch change {
+			case "deleted":
+				req.Kind = &calendarv1.CalendarChangeEvent_DeletedEventId{
+					DeletedEventId: evt.ID,
+				}
+			default:
+				p, err := evt.ToProto()
+				if err != nil {
+					slog.Error("failed to convert event to protobuf", "error", err)
+				} else {
+					req.Kind = &calendarv1.CalendarChangeEvent_EventChange{
+						EventChange: p,
+					}
+				}
+			}
+
+			if req.Kind != nil {
+				PublishEvent(ec.eventService, req, false)
+			}
 		}
 		updatesProcessed += len(res.Items)
 
@@ -268,4 +301,21 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 
 	logrus.Infof("loaded %d calendar events from cache", len(res))
 	return res, true
+}
+
+func PublishEvent(events eventsv1connect.EventServiceClient, msg proto.Message, retained bool) {
+	go func() {
+		pb, err := anypb.New(msg)
+		if err != nil {
+			slog.Error("failed to marshal protobuf message as anypb.Any", "error", err, "messageType", proto.MessageName(msg))
+			return
+		}
+
+		if _, err := events.Publish(context.Background(), connect.NewRequest(&eventsv1.Event{
+			Event:    pb,
+			Retained: retained,
+		})); err != nil {
+			slog.Error("failed to publish event", "error", err, "messageType", proto.MessageName(msg))
+		}
+	}()
 }

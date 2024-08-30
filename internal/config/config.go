@@ -11,13 +11,14 @@ import (
 )
 
 type Config struct {
-	CredentialsFile string   `json:"credentialsFile"`
-	TokenFile       string   `json:"tokenFile"`
-	IgnoreCalendars []string `json:"ignoreCalendars"`
-	IdmURL          string   `json:"idmUrl"`
-	AllowedOrigins  []string `json:"allowedOrigins"`
-	ListenAddress   string   `json:"listen"`
-	DefaultCountry  string   `json:"defaultCountry"`
+	CredentialsFile  string   `json:"credentialsFile"`
+	TokenFile        string   `json:"tokenFile"`
+	IgnoreCalendars  []string `json:"ignoreCalendars"`
+	IdmURL           string   `json:"idmUrl"`
+	EventsServiceUrl string   `json:"eventsServiceUrl"`
+	AllowedOrigins   []string `json:"allowedOrigins"`
+	ListenAddress    string   `json:"listen"`
+	DefaultCountry   string   `json:"defaultCountry"`
 }
 
 // LoadConfig loads the configuration file from cfgPath.

@@ -14,6 +14,8 @@ import (
 
 	"github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
+	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
+	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/config"
 	"github.com/tierklinik-dobersberg/cis/pkg/trace"
 	"go.opentelemetry.io/otel"
@@ -42,6 +44,7 @@ type Service interface {
 
 type googleCalendarBackend struct {
 	*calendar.Service
+	EventsClient    eventsv1connect.EventServiceClient
 	location        *time.Location
 	ignoreCalendars []string
 
@@ -73,6 +76,7 @@ func New(ctx context.Context, cfg config.Config) (Service, error) {
 		eventsCache:     make(map[string]*googleEventCache),
 		location:        time.UTC,
 		ignoreCalendars: cfg.IgnoreCalendars,
+		EventsClient:    eventsv1connect.NewEventServiceClient(cli.NewInsecureHttp2Client(), cfg.EventsServiceUrl),
 	}
 	if svc.location == nil {
 		svc.location = time.Local
@@ -284,7 +288,7 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 		return cache, nil
 	}
 
-	cache, err := newCache(ctx, calID, svc.location, svc.Service)
+	cache, err := newCache(ctx, calID, svc.location, svc.Service, svc.EventsClient)
 	if err != nil {
 		return nil, err
 	}

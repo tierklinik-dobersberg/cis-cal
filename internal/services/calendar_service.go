@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,10 +15,10 @@ import (
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/app"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
+	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type CalendarService struct {
@@ -219,8 +220,11 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		calendarById[cal.ID] = cal
 	}
 
+	calendarIdList := maps.Keys(calendarIds)
+	sort.Stable(sort.StringSlice(calendarIdList))
+
 	response := &calendarv1.ListEventsResponse{}
-	for calId := range calendarIds {
+	for _, calId := range calendarIdList {
 		var (
 			events []repo.Event
 			err    error
@@ -247,7 +251,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 
 		for idx, e := range events {
-			protoEvent, err := modelToProtoEvent(ctx, e)
+			protoEvent, err := e.ToProto()
 			if err != nil {
 				return nil, err
 			}
@@ -265,42 +269,6 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	fmutils.Filter(response, readMask)
 
 	return connect.NewResponse(response), nil
-}
-
-func modelToProtoEvent(_ context.Context, model repo.Event) (*calendarv1.CalendarEvent, error) {
-	var endTime *timestamppb.Timestamp
-	var any *anypb.Any
-	var err error
-
-	if model.EndTime != nil {
-		endTime = timestamppb.New(*model.EndTime)
-	}
-
-	if model.Data != nil {
-		extra := &calendarv1.CustomerAnnotation{
-			CustomerSource:  model.Data.CustomerSource,
-			CustomerId:      model.Data.CustomerID,
-			AnimalIds:       model.Data.AnimalID,
-			CreatedByUserId: model.Data.CreatedBy,
-		}
-
-		any, err = anypb.New(extra)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &calendarv1.CalendarEvent{
-		Id:          model.ID,
-		CalendarId:  model.CalendarID,
-		StartTime:   timestamppb.New(model.StartTime),
-		EndTime:     endTime,
-		FullDay:     model.FullDayEvent,
-		ExtraData:   any,
-		Summary:     model.Summary,
-		Description: model.Description,
-	}, nil
-
 }
 
 func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Request[calendarv1.CreateEventRequest]) (*connect.Response[calendarv1.CreateEventResponse], error) {
@@ -339,7 +307,7 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 
-	protoEvent, err := modelToProtoEvent(ctx, *newEvent)
+	protoEvent, err := newEvent.ToProto()
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +415,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 
-	protoEvent, err := modelToProtoEvent(ctx, *updatedEvent)
+	protoEvent, err := updatedEvent.ToProto()
 	if err != nil {
 		return nil, err
 	}
@@ -481,7 +449,7 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 		return nil, err
 	}
 
-	protoEvent, err := modelToProtoEvent(ctx, *event)
+	protoEvent, err := event.ToProto()
 	if err != nil {
 		return nil, err
 	}

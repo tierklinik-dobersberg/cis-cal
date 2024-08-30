@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var ErrInvalidEvent = errors.New("invalid event")
@@ -176,4 +179,40 @@ func parseDescription(desc string) (string, *StructuredEvent, error) {
 	}
 
 	return strippedDescr, &data, nil
+}
+
+func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
+	var endTime *timestamppb.Timestamp
+	var any *anypb.Any
+	var err error
+
+	if model.EndTime != nil {
+		endTime = timestamppb.New(*model.EndTime)
+	}
+
+	if model.Data != nil {
+		extra := &calendarv1.CustomerAnnotation{
+			CustomerSource:  model.Data.CustomerSource,
+			CustomerId:      model.Data.CustomerID,
+			AnimalIds:       model.Data.AnimalID,
+			CreatedByUserId: model.Data.CreatedBy,
+		}
+
+		any, err = anypb.New(extra)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &calendarv1.CalendarEvent{
+		Id:          model.ID,
+		CalendarId:  model.CalendarID,
+		StartTime:   timestamppb.New(model.StartTime),
+		EndTime:     endTime,
+		FullDay:     model.FullDayEvent,
+		ExtraData:   any,
+		Summary:     model.Summary,
+		Description: model.Description,
+	}, nil
+
 }
