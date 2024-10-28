@@ -104,7 +104,7 @@ func main() {
 		logrus.Fatalf("failed to get service catalog client: %s", err)
 	}
 
-	if err := discovery.Register(ctx, catalog, discovery.ServiceInstance{
+	if err := discovery.Register(ctx, catalog, &discovery.ServiceInstance{
 		Name:    wellknown.CalendarV1ServiceScope,
 		Address: cfg.ListenAddress,
 	}); err != nil {
