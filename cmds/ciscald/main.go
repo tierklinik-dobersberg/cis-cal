@@ -12,6 +12,9 @@ import (
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/auth"
 	"github.com/tierklinik-dobersberg/apis/pkg/cors"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/consuldiscover"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/wellknown"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/apis/pkg/privacy"
 	"github.com/tierklinik-dobersberg/apis/pkg/server"
@@ -93,6 +96,19 @@ func main() {
 		AllowedOrigins:   cfg.AllowedOrigins,
 		AllowCredentials: true, // we need allow-credentials here as browsers need to send the token for the forward-auth endpoint
 		Debug:            true,
+	}
+
+	// Register at service catalog
+	catalog, err := consuldiscover.NewFromEnv()
+	if err != nil {
+		logrus.Fatalf("failed to get service catalog client: %s", err)
+	}
+
+	if err := discovery.Register(ctx, catalog, discovery.ServiceInstance{
+		Name:    wellknown.CalendarV1ServiceScope,
+		Address: cfg.ListenAddress,
+	}); err != nil {
+		logrus.Errorf("failed to register service at catalog: %s", err)
 	}
 
 	httpServer := server.Create(
