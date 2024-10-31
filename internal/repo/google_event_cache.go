@@ -267,18 +267,18 @@ func (ec *googleEventCache) evictFromCache(ctx context.Context) {
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventSearchOptions) ([]Event, bool) {
 	// check if it's even possible to serve the request from cache.
 	if search == nil {
-		logrus.Infof("not using cache: search == nil")
+		logrus.Debug("not using cache: search == nil")
 		return nil, false
 	}
 	if search.FromTime == nil {
-		logrus.Infof("not using cache: search.from == nil")
+		logrus.Debug("not using cache: search.from == nil")
 		return nil, false
 	}
 
 	ec.rw.RLock()
 	defer ec.rw.RUnlock()
 	if search.FromTime.Before(ec.minTime) && !ec.minTime.IsZero() {
-		logrus.Infof("not using cache: search.from (%s) is before minTime (%s)", search.FromTime, ec.minTime)
+		logrus.Debugf("not using cache: search.from (%s) is before minTime (%s)", search.FromTime, ec.minTime)
 
 		return nil, false
 	}
@@ -294,7 +294,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 		if startInRange {
 			if search.EventID != nil {
 				if evt.ID == *search.EventID {
-					logrus.Infof("found event with id %q in cache", *search.EventID)
+					logrus.Debugf("found event with id %q in cache", *search.EventID)
 					return []Event{evt}, true
 				}
 			} else {
@@ -303,7 +303,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 		}
 	}
 
-	logrus.Infof("loaded %d calendar events from cache", len(res))
+	logrus.Debugf("loaded %d calendar events from cache", len(res))
 	return res, true
 }
 

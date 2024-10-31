@@ -160,7 +160,7 @@ func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID str
 		if ok {
 			return events, nil
 		}
-		logrus.Infof("cache miss when loading events for %s", calendarID)
+		logrus.Debugf("cache miss when loading events for %s", calendarID)
 	}
 
 	return svc.loadEvents(ctx, calendarID, opts)
@@ -283,7 +283,7 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 
 	cache, ok := svc.eventsCache[calID]
 	if ok {
-		logrus.Infof("using existing event cache for %s", calID)
+		logrus.Debugf("using existing event cache for %s", calID)
 
 		return cache, nil
 	}
@@ -294,7 +294,7 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 	}
 
 	svc.eventsCache[calID] = cache
-	logrus.Infof("created new event cache for calendar %s", calID)
+	logrus.Debugf("created new event cache for calendar %s", calID)
 
 	return cache, nil
 }
