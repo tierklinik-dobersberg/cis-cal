@@ -129,6 +129,10 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		for _, item := range res.Items {
 			evt, change := ec.syncEvent(ctx, item)
 
+			if evt == nil {
+				continue
+			}
+
 			req := &calendarv1.CalendarChangeEvent{
 				Calendar: ec.calID,
 			}
