@@ -95,7 +95,7 @@ func main() {
 	corsOpts := cors.Config{
 		AllowedOrigins:   cfg.AllowedOrigins,
 		AllowCredentials: true, // we need allow-credentials here as browsers need to send the token for the forward-auth endpoint
-		Debug:            true,
+		Debug:            os.Getenv("DEBUG_CORS") != "",
 	}
 
 	// Register at service catalog
