@@ -10,6 +10,7 @@ import (
 	"github.com/bufbuild/connect-go"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
+	commonv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/common/v1"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 )
 
@@ -26,6 +27,49 @@ func NewHolidayService(country string) *HolidayService {
 	return &HolidayService{
 		country: country,
 		getter:  getter,
+	}
+}
+
+func holidayToProto(ctx context.Context, p PublicHoliday) *calendarv1.PublicHoliday {
+	var protoType calendarv1.HolidayType
+
+	if slices.Contains(p.Types, "Public") {
+		protoType = calendarv1.HolidayType_PUBLIC
+	} else {
+		for _, pType := range p.Types {
+			switch pType {
+			case "Public":
+				protoType = calendarv1.HolidayType_PUBLIC
+			case "Bank":
+				protoType = calendarv1.HolidayType_BANK
+			case "School":
+				protoType = calendarv1.HolidayType_SCHOOL
+			case "Authorities":
+				protoType = calendarv1.HolidayType_AUTHORITIES
+			case "Optional":
+				protoType = calendarv1.HolidayType_OPTIONAL
+			case "Observance":
+				protoType = calendarv1.HolidayType_OBSERVANCE
+			default:
+				log.L(ctx).Errorf("unsupported public holiday type %q", pType)
+
+				protoType = calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
+
+				continue
+			}
+
+			break
+		}
+	}
+
+	return &calendarv1.PublicHoliday{
+		Date:        p.Date,
+		LocalName:   p.LocalName,
+		Name:        p.Name,
+		CountryCode: p.CountryCode,
+		Fixed:       p.Fixed,
+		Global:      p.Global,
+		Type:        protoType,
 	}
 }
 
@@ -46,51 +90,38 @@ func (svc *HolidayService) GetHoliday(ctx context.Context, req *connect.Request[
 			continue
 		}
 
-		var protoType calendarv1.HolidayType
-
-		if slices.Contains(p.Types, "Public") {
-			protoType = calendarv1.HolidayType_PUBLIC
-		} else {
-			for _, pType := range p.Types {
-				switch pType {
-				case "Public":
-					protoType = calendarv1.HolidayType_PUBLIC
-				case "Bank":
-					protoType = calendarv1.HolidayType_BANK
-				case "School":
-					protoType = calendarv1.HolidayType_SCHOOL
-				case "Authorities":
-					protoType = calendarv1.HolidayType_AUTHORITIES
-				case "Optional":
-					protoType = calendarv1.HolidayType_OPTIONAL
-				case "Observance":
-					protoType = calendarv1.HolidayType_OBSERVANCE
-				default:
-					log.L(ctx).Errorf("unsupported public holiday type %q", pType)
-
-					protoType = calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
-
-					continue
-				}
-
-				break
-			}
-		}
-
-		result = append(result, &calendarv1.PublicHoliday{
-			Date:        p.Date,
-			LocalName:   p.LocalName,
-			Name:        p.Name,
-			CountryCode: p.CountryCode,
-			Fixed:       p.Fixed,
-			Global:      p.Global,
-			Type:        protoType,
-		})
+		result = append(result, holidayToProto(ctx, p))
 	}
 
 	return connect.NewResponse(&calendarv1.GetHolidayResponse{
 		Holidays: result,
 	}), nil
+}
+
+func (svc *HolidayService) IsHoliday(ctx context.Context, req *connect.Request[calendarv1.IsHolidayRequest]) (*connect.Response[calendarv1.IsHolidayResponse], error) {
+	date := req.Msg.Date
+
+	if date == nil {
+		date = commonv1.FromTime(time.Now().Local())
+	}
+
+	t := date.AsTime()
+
+	isHoliday, holiday, err := svc.getter.IsHoliday(ctx, svc.country, t)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &calendarv1.IsHolidayResponse{
+		IsHoliday:   isHoliday,
+		QueriedDate: date,
+	}
+
+	if isHoliday {
+		res.Holiday = holidayToProto(ctx, *holiday)
+	}
+
+	return connect.NewResponse(res), nil
 }
 
 func (svc *HolidayService) NumberOfWorkDays(ctx context.Context, req *connect.Request[calendarv1.NumberOfWorkDaysRequest]) (*connect.Response[calendarv1.NumberOfWorkDaysResponse], error) {
@@ -111,7 +142,7 @@ L:
 			response.NumberOfWeekendDays++
 			continue
 		default:
-			isHoliday, err := svc.getter.IsHoliday(ctx, country, iter)
+			isHoliday, _, err := svc.getter.IsHoliday(ctx, country, iter)
 			if err != nil {
 				break L
 			}

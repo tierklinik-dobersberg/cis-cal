@@ -26,7 +26,7 @@ type HolidayGetter interface {
 
 	// IsHoliday returns true if d is a public holiday in
 	// country.
-	IsHoliday(ctx context.Context, country string, d time.Time) (bool, error)
+	IsHoliday(ctx context.Context, country string, d time.Time) (bool, *PublicHoliday, error)
 }
 
 // PublicHoliday represents a public holiday record returned by date.nager.at.
@@ -132,19 +132,19 @@ func (cache *HolidayCache) Get(ctx context.Context, country string, year int) ([
 }
 
 // IsHoliday returns true if d is a public holiday in country.
-func (cache *HolidayCache) IsHoliday(ctx context.Context, country string, d time.Time) (bool, error) {
+func (cache *HolidayCache) IsHoliday(ctx context.Context, country string, d time.Time) (bool, *PublicHoliday, error) {
 	holidays, err := cache.Get(ctx, country, d.Year())
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 
 	for _, p := range holidays {
 		if p.Is(d) {
-			return true, nil
+			return true, &p, nil
 		}
 	}
 
-	return false, nil
+	return false, nil, nil
 }
 
 // load loads the public holidays for country and year and makes sure no more than one HTTP
