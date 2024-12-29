@@ -34,6 +34,21 @@ type Event struct {
 	CalendarID   string
 	FullDayEvent bool
 	Data         *StructuredEvent
+	IsFree       bool
+}
+
+type EventList []Event
+
+func (el EventList) Len() int { return len(el) }
+func (el EventList) Less(i, j int) bool {
+	if el[i].StartTime.Before(el[j].StartTime) {
+		return true
+	}
+
+	return el[i].EndTime.Before(*el[j].EndTime)
+}
+func (el EventList) Swap(i, j int) {
+	el[i], el[j] = el[j], el[i]
 }
 
 type StructuredEvent struct {
@@ -213,6 +228,7 @@ func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
 		ExtraData:   any,
 		Summary:     model.Summary,
 		Description: model.Description,
+		IsFree:      model.IsFree,
 	}, nil
 
 }

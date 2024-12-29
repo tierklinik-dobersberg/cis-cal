@@ -84,7 +84,7 @@ func main() {
 
 	serveMux := http.NewServeMux()
 
-	calService := services.New(app)
+	calService := services.New(ctx, app)
 	path, handler := calendarv1connect.NewCalendarServiceHandler(calService, interceptors)
 	serveMux.Handle(path, handler)
 

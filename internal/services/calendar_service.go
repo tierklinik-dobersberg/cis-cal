@@ -14,6 +14,7 @@ import (
 	idmv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/app"
+	"github.com/tierklinik-dobersberg/cis-cal/internal/cache"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -24,11 +25,48 @@ import (
 type CalendarService struct {
 	calendarv1connect.UnimplementedCalendarServiceHandler
 
+	users        *cache.Cache[*idmv1.Profile]
+	byUserId     *cache.Index[*idmv1.Profile]
+	byCalendarId *cache.Index[*idmv1.Profile]
+
 	repo *app.App
 }
 
-func New(svc *app.App) *CalendarService {
-	return &CalendarService{repo: svc}
+func New(ctx context.Context, svc *app.App) *CalendarService {
+
+	// create a new user profile cache.
+	c := cache.NewCache(time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
+		res, err := svc.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
+			FieldMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"users.user.extra", "users.user.id"},
+			},
+		}))
+
+		if err != nil {
+			return nil, err
+		}
+
+		return res.Msg.Users, nil
+	}))
+
+	c.Start(ctx)
+
+	s := &CalendarService{
+		repo:  svc,
+		users: c,
+		byUserId: cache.NewIndex(func(p *idmv1.Profile) (string, bool) {
+			return p.User.Id, true
+		}),
+		byCalendarId: cache.NewIndex(func(p *idmv1.Profile) (string, bool) {
+			calId := extractCalendarId(ctx, p)
+			return calId, calId != ""
+		}),
+	}
+
+	c.AddIndex(s.byCalendarId)
+	c.AddIndex(s.byUserId)
+
+	return s
 }
 
 func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Request[calendarv1.ListCalendarsRequest]) (*connect.Response[calendarv1.ListCalendarsResponse], error) {
@@ -78,11 +116,11 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			repo.WithEventsBefore(nextDay),
 		}...)
 	case *calendarv1.ListEventsRequest_TimeRange:
-		if v.TimeRange.From != nil {
+		if v.TimeRange.From != nil && v.TimeRange.From.IsValid() {
 			opts = append(opts, repo.WithEventsAfter(v.TimeRange.From.AsTime()))
 		}
 
-		if v.TimeRange.To != nil {
+		if v.TimeRange.To != nil && v.TimeRange.To.IsValid() {
 			opts = append(opts, repo.WithEventsBefore(v.TimeRange.To.AsTime()))
 		}
 	}

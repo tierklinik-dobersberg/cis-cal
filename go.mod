@@ -10,7 +10,7 @@ require (
 	github.com/mennanov/fmutils v0.3.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.1
-	github.com/tierklinik-dobersberg/apis v0.24.0
+	github.com/tierklinik-dobersberg/apis v0.24.1-0.20241227080611-6bc4551a6467
 	github.com/tierklinik-dobersberg/cis v1.5.0
 	go.opentelemetry.io/otel v1.31.0
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
@@ -62,6 +62,7 @@ require (
 	github.com/sebest/xff v0.0.0-20210106013422-671bd2870b3a // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
+	github.com/stretchr/testify v1.9.0
 	github.com/tierklinik-dobersberg/logger v0.4.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
