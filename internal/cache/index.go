@@ -15,6 +15,15 @@ func NewIndex[K comparable, T any](indexer func(T) (K, bool)) *Index[K, T] {
 	}
 }
 
+func (i *Index[K, T]) Get(key K) (T, bool) {
+	i.l.RLock()
+	defer i.l.RUnlock()
+
+	val, ok := i.values[key]
+
+	return val, ok
+}
+
 func (i *Index[K, T]) Update(values []T) {
 	m := make(map[K]T)
 	for _, v := range values {

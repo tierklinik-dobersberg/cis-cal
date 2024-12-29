@@ -36,6 +36,14 @@ type Cache[T any] struct {
 	indexes   []Indexer[T]
 }
 
+func CreateIndex[K comparable, T any](cache *Cache[T], indexer func(T) (K, bool)) *Index[K, T] {
+	i := NewIndex(indexer)
+
+	cache.AddIndex(i)
+
+	return i
+}
+
 func (cache *Cache[T]) AddIndex(index Indexer[T]) {
 	cache.indexLock.Lock()
 	cache.indexes = append(cache.indexes, index)

@@ -54,17 +54,14 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 	s := &CalendarService{
 		repo:  svc,
 		users: c,
-		byUserId: cache.NewIndex(func(p *idmv1.Profile) (string, bool) {
+		byUserId: cache.CreateIndex(c, func(p *idmv1.Profile) (string, bool) {
 			return p.User.Id, true
 		}),
-		byCalendarId: cache.NewIndex(func(p *idmv1.Profile) (string, bool) {
+		byCalendarId: cache.CreateIndex(c, func(p *idmv1.Profile) (string, bool) {
 			calId := extractCalendarId(ctx, p)
 			return calId, calId != ""
 		}),
 	}
-
-	c.AddIndex(s.byCalendarId)
-	c.AddIndex(s.byUserId)
 
 	return s
 }
