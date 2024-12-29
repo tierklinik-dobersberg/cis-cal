@@ -26,8 +26,8 @@ type CalendarService struct {
 	calendarv1connect.UnimplementedCalendarServiceHandler
 
 	users        *cache.Cache[*idmv1.Profile]
-	byUserId     *cache.Index[*idmv1.Profile]
-	byCalendarId *cache.Index[*idmv1.Profile]
+	byUserId     *cache.Index[string, *idmv1.Profile]
+	byCalendarId *cache.Index[string, *idmv1.Profile]
 
 	repo *app.App
 }

@@ -17,6 +17,10 @@ func (lf LoaderFunc[T]) Load(ctx context.Context) ([]T, error) {
 	return lf(ctx)
 }
 
+type Indexer[T any] interface {
+	Update(values []T)
+}
+
 type Cache[T any] struct {
 	l         sync.RWMutex
 	interval  time.Duration
@@ -29,46 +33,17 @@ type Cache[T any] struct {
 	loader    Loader[T]
 
 	indexLock sync.Mutex
-	indexes   []*Index[T]
+	indexes   []Indexer[T]
 }
 
-type Index[T any] struct {
-	l      sync.RWMutex
-	values map[string]T
-
-	indexer func(t T) (string, bool)
-}
-
-func NewIndex[T any](indexer func(T) (string, bool)) *Index[T] {
-	return &Index[T]{
-		values: make(map[string]T),
-	}
-}
-
-func (i *Index[T]) update(values []T) {
-	m := make(map[string]T)
-	for _, v := range values {
-		k, ok := i.indexer(v)
-		if !ok {
-			continue
-		}
-
-		m[k] = v
-	}
-
-	i.l.Lock()
-	defer i.l.Unlock()
-	i.values = m
-}
-
-func (cache *Cache[T]) AddIndex(index *Index[T]) {
+func (cache *Cache[T]) AddIndex(index Indexer[T]) {
 	cache.indexLock.Lock()
 	cache.indexes = append(cache.indexes, index)
 	cache.indexLock.Unlock()
 
 	// immediately update the index
 	values, _ := cache.Get()
-	go index.update(values)
+	go index.Update(values)
 }
 
 func (cache *Cache[T]) updateIndexes(values []T) {
@@ -76,7 +51,7 @@ func (cache *Cache[T]) updateIndexes(values []T) {
 	defer cache.indexLock.Unlock()
 
 	for _, i := range cache.indexes {
-		i.update(values)
+		i.Update(values)
 	}
 }
 
