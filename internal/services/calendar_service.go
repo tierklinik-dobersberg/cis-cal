@@ -35,7 +35,7 @@ type CalendarService struct {
 func New(ctx context.Context, svc *app.App) *CalendarService {
 
 	// create a new user profile cache.
-	c := cache.NewCache(time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
+	c := cache.NewCache("profiles", time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
 		res, err := svc.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
 			FieldMask: &fieldmaskpb.FieldMask{
 				Paths: []string{"users.user.extra", "users.user.id"},

@@ -22,6 +22,9 @@ type Indexer[T any] interface {
 }
 
 type Cache[T any] struct {
+	name string
+	log  *slog.Logger
+
 	l         sync.RWMutex
 	interval  time.Duration
 	startOnce sync.Once
@@ -51,7 +54,7 @@ func (cache *Cache[T]) AddIndex(index Indexer[T]) {
 
 	// immediately update the index
 	values, _ := cache.Get()
-	go index.Update(values)
+	index.Update(values)
 }
 
 func (cache *Cache[T]) updateIndexes(values []T) {
@@ -63,11 +66,13 @@ func (cache *Cache[T]) updateIndexes(values []T) {
 	}
 }
 
-func NewCache[T any](interval time.Duration, loader Loader[T]) *Cache[T] {
+func NewCache[T any](name string, interval time.Duration, loader Loader[T]) *Cache[T] {
 	return &Cache[T]{
+		name:     name,
 		interval: interval,
 		loader:   loader,
 		trigger:  make(chan struct{}),
+		log:      slog.With("name", name),
 	}
 }
 
@@ -107,7 +112,7 @@ func (c *Cache[T]) Start(ctx context.Context) {
 				cancel()
 
 				if err != nil {
-					slog.Error("failed to update cache values", "error", err)
+					c.log.Error("failed to update cache values", "error", err)
 				} else {
 					now := time.Now()
 
@@ -118,7 +123,7 @@ func (c *Cache[T]) Start(ctx context.Context) {
 
 					c.updateIndexes(values)
 
-					slog.Error("successfully updated cache values", "count", len(values))
+					c.log.Error("successfully updated cache values", "count", len(values))
 				}
 
 				select {

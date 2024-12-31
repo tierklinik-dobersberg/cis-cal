@@ -11,7 +11,8 @@ type Index[K comparable, T any] struct {
 
 func NewIndex[K comparable, T any](indexer func(T) (K, bool)) *Index[K, T] {
 	return &Index[K, T]{
-		values: make(map[K]T),
+		values:  make(map[K]T),
+		indexer: indexer,
 	}
 }
 
