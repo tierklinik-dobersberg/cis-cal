@@ -316,7 +316,12 @@ func (ec *googleEventCache) appendEvents(events []Event, minTime time.Time) {
 	}
 
 	ec.events = append(toAppend, ec.events...)
-	ec.minTime = minTime
+
+	if minTime.Before(ec.minTime) {
+		ec.minTime = minTime
+	}
+
+	ec.log.Info("out-of-cache events append", "count", len(toAppend), "cache-size", len(ec.events))
 }
 
 func (ec *googleEventCache) currentMinTime() time.Time {
