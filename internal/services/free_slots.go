@@ -71,6 +71,10 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 			endOfSlot = end
 		} else {
 			endOfSlot = filtered[i].StartTime
+
+			if endOfSlot.Before(start) {
+				endOfSlot = start
+			}
 		}
 
 		if endOfSlot.After(end) {
