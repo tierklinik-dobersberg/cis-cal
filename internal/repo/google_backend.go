@@ -44,6 +44,7 @@ type Service interface {
 
 type googleCalendarBackend struct {
 	*calendar.Service
+
 	EventsClient    eventsv1connect.EventServiceClient
 	location        *time.Location
 	ignoreCalendars []string
@@ -288,7 +289,7 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 		return cache, nil
 	}
 
-	cache, err := newCache(ctx, calID, svc.location, svc.Service, svc.EventsClient)
+	cache, err := newCache(ctx, calID, calID, svc.location, svc.Service, svc.EventsClient)
 	if err != nil {
 		return nil, err
 	}

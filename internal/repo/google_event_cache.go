@@ -10,7 +10,6 @@ import (
 	"time"
 
 	connect "github.com/bufbuild/connect-go"
-	"github.com/sirupsen/logrus"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	eventsv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
@@ -29,9 +28,12 @@ type googleEventCache struct {
 	trigger       chan struct{}
 
 	calID        string
+	calendarName string
 	events       []Event
 	svc          *calendar.Service
 	eventService eventsv1connect.EventServiceClient
+
+	log *slog.Logger
 }
 
 func (ec *googleEventCache) String() string {
@@ -39,14 +41,16 @@ func (ec *googleEventCache) String() string {
 }
 
 // nolint:unparam
-func newCache(ctx context.Context, id string, loc *time.Location, svc *calendar.Service, eventCli eventsv1connect.EventServiceClient) (*googleEventCache, error) {
+func newCache(ctx context.Context, id string, name string, loc *time.Location, svc *calendar.Service, eventCli eventsv1connect.EventServiceClient) (*googleEventCache, error) {
 	cache := &googleEventCache{
 		calID:         id,
+		calendarName:  name,
 		svc:           svc,
 		location:      loc,
 		firstLoadDone: make(chan struct{}),
 		trigger:       make(chan struct{}),
 		eventService:  eventCli,
+		log:           slog.With("calendar", name, "id", id),
 	}
 
 	go cache.watch(ctx)
@@ -67,11 +71,17 @@ func (ec *googleEventCache) watch(ctx context.Context) {
 	firstLoad := true
 	for {
 		success := ec.loadEvents(ctx)
+
 		if success {
 			waitTime = time.Minute
 		} else {
 			// in case of consecutive failures do some exponential backoff
 			waitTime = 2 * waitTime
+		}
+
+		// cap at max 30 minute wait time
+		if waitTime > time.Minute*30 {
+			waitTime = time.Minute * 30
 		}
 
 		if firstLoad {
@@ -121,7 +131,7 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 				return true
 			}
 
-			logrus.Errorf("failed to sync events: %s", err)
+			ec.log.Error("failed to sync calendar events", "error", err)
 
 			return false
 		}
@@ -145,7 +155,7 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 			default:
 				p, err := evt.ToProto()
 				if err != nil {
-					slog.Error("failed to convert event to protobuf", "error", err)
+					ec.log.Error("failed to convert event to protobuf", "error", err)
 				} else {
 					req.Kind = &calendarv1.CalendarChangeEvent_EventChange{
 						EventChange: p,
@@ -174,7 +184,8 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		// if's should have matched. if we get her google apis returned
 		// something unexpected so better clear anything we have and start
 		// over.
-		logrus.Errorf("unexpected google api response, starting over")
+		ec.log.Error("unexpected google api response, starting over")
+
 		ec.syncToken = ""
 		ec.events = nil
 		ec.minTime = time.Time{}
@@ -182,7 +193,7 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		return false
 	}
 	if updatesProcessed > 0 {
-		logrus.Infof("processed %d updates", updatesProcessed)
+		ec.log.Info("processed updates", "updates", updatesProcessed)
 	}
 
 	sort.Sort(ByStartTime(ec.events))
@@ -211,7 +222,7 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 		// this should be an update
 		evt, err := googleEventToModel(ctx, ec.calID, item)
 		if err != nil {
-			logrus.Errorf("failed to convert event: %s", err)
+			ec.log.Error("failed to convert event", "event-id", item.Id, "error", err)
 			return nil, ""
 		}
 		ec.events[foundAtIndex] = *evt
@@ -221,7 +232,7 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 
 	evt, err := googleEventToModel(ctx, ec.calID, item)
 	if err != nil {
-		logrus.Errorf("failed to convert event: %s", err)
+		ec.log.Error("failed to convert event", "event-id", item.Id, "error", err)
 		return nil, ""
 	}
 	ec.events = append(ec.events, *evt)
@@ -255,30 +266,30 @@ func (ec *googleEventCache) evictFromCache(ctx context.Context) {
 	}
 
 	if idx == 0 {
-		logrus.Infof("cannot evict cache entries for today.")
+		ec.log.Info("cannot evict cache entries for today.")
 		return
 	}
 
 	ec.events = ec.events[idx:]
 	ec.minTime = ec.events[0].StartTime
-	logrus.Infof("evicted %d events from cache which now starts with %s and holds %d events", idx, ec.minTime.Format(time.RFC3339), len(ec.events))
+	ec.log.Info("evicted events from cache", "evicted", idx, "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
 }
 
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventSearchOptions) ([]Event, bool) {
 	// check if it's even possible to serve the request from cache.
 	if search == nil {
-		logrus.Debug("not using cache: search == nil")
+		ec.log.Info("not using cache: search == nil")
 		return nil, false
 	}
 	if search.FromTime == nil {
-		logrus.Debug("not using cache: search.from == nil")
+		ec.log.Info("not using cache: search.from == nil")
 		return nil, false
 	}
 
 	ec.rw.RLock()
 	defer ec.rw.RUnlock()
 	if search.FromTime.Before(ec.minTime) && !ec.minTime.IsZero() {
-		logrus.Debugf("not using cache: search.from (%s) is before minTime (%s)", search.FromTime, ec.minTime)
+		ec.log.Info("not using cache: search.from is before minTime", "search-time", search.FromTime, "min-time", ec.minTime)
 
 		return nil, false
 	}
@@ -294,7 +305,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 		if startInRange {
 			if search.EventID != nil {
 				if evt.ID == *search.EventID {
-					logrus.Debugf("found event with id %q in cache", *search.EventID)
+					ec.log.Debug("found event in cache", "event-id", *search.EventID)
 					return []Event{evt}, true
 				}
 			} else {
@@ -303,7 +314,8 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 		}
 	}
 
-	logrus.Debugf("loaded %d calendar events from cache", len(res))
+	ec.log.Debug("loaded calendar events from cache", "count", len(res))
+
 	return res, true
 }
 
