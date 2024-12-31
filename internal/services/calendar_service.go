@@ -405,7 +405,7 @@ func (svc *CalendarService) fetchRoster(ctx context.Context, start, end time.Tim
 
 		// skip on-call shifts
 		// TODO(ppacher): make the tag configurable and also support multiple tags.
-		if slices.Contains(def.Tags, "on-call") {
+		if slices.Contains(def.Tags, "oncall") || slices.Contains(def.Tags, "gt-oncall") {
 			continue
 		}
 
