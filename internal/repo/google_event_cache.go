@@ -319,6 +319,13 @@ func (ec *googleEventCache) appendEvents(events []Event, minTime time.Time) {
 	ec.minTime = minTime
 }
 
+func (ec *googleEventCache) currentMinTime() time.Time {
+	ec.rw.RLock()
+	defer ec.rw.RUnlock()
+
+	return ec.minTime
+}
+
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventSearchOptions) ([]Event, bool) {
 	// check if it's even possible to serve the request from cache.
 	if search == nil {

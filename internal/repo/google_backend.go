@@ -152,12 +152,9 @@ func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID str
 		logrus.Errorf("failed to get event cache for calendar %s: %s", calendarID, err)
 	}
 
-	if cache != nil {
-		events, ok := cache.tryLoadFromCache(ctx, opts)
-		if ok {
-			return events, nil
-		}
-		logrus.Debugf("cache miss when loading events for %s", calendarID)
+	events, ok := cache.tryLoadFromCache(ctx, opts)
+	if ok {
+		return events, nil
 	}
 
 	return svc.loadEvents(ctx, calendarID, opts, cache)
@@ -335,17 +332,24 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 			call = call.TimeMin(searchOpts.FromTime.Format(time.RFC3339))
 			key += fmt.Sprintf("-%s", searchOpts.FromTime.Format(time.RFC3339))
 		}
-		if searchOpts.ToTime != nil {
-			call = call.TimeMax(searchOpts.ToTime.Format(time.RFC3339))
-			key += fmt.Sprintf("-%s", searchOpts.ToTime.Format(time.RFC3339))
+
+		upper := cache.currentMinTime()
+
+		if searchOpts.ToTime == nil {
+			searchOpts.ToTime = &upper
+		} else if searchOpts.ToTime.Before(upper) {
+			searchOpts.ToTime = &upper
 		}
+
+		call = call.TimeMax(searchOpts.ToTime.Format(time.RFC3339))
+		key += fmt.Sprintf("-%s", searchOpts.ToTime.Format(time.RFC3339))
 
 		if searchOpts.EventID != nil {
 			key += "-" + *searchOpts.EventID
 		}
 	}
 
-	res, err, shared := svc.loadGroup.Do(key, func() (interface{}, error) {
+	res, err, _ := svc.loadGroup.Do(key, func() (interface{}, error) {
 		var events []Event
 		var pageToken string
 		for {
@@ -361,7 +365,7 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 				evt, err := googleEventToModel(ctx, calendarID, item)
 
 				if err != nil {
-					logrus.Errorf(err.Error())
+					logrus.Error(err.Error())
 
 					continue
 				}
@@ -388,22 +392,28 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 		}
 
 		// if we got a cache, append the results to the cache
-		if cache != nil && searchOpts.FromTime != nil {
+		if searchOpts.FromTime != nil {
 			cache.appendEvents(events, *searchOpts.FromTime)
 		}
 
 		return events, nil
 	})
 
-	svc.loadGroup.Forget(key)
-	if shared {
-		logrus.Infof("shared calendar load between multiple callers")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch events: %w", err)
+	}
+
+	if searchOpts.EventID != nil {
+		return res.([]Event), nil
 	}
 
 	// trunk-ignore(golangci-lint/forcetypeassert)
-	result := res.([]Event)
+	result, ok := cache.tryLoadFromCache(ctx, searchOpts)
+	if !ok {
+		return nil, fmt.Errorf("internal server error, cache should be able to fullfill request now")
+	}
 
-	return result, err
+	return result, nil
 }
 
 func (svc *googleCalendarBackend) shouldIngore(item *calendar.CalendarListEntry) bool {
