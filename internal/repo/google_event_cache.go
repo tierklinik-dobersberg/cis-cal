@@ -241,39 +241,31 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 }
 
 func (ec *googleEventCache) evictFromCache(ctx context.Context) {
+	now := time.Now().Local()
+	currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+
 	ec.rw.Lock()
 	defer ec.rw.Unlock()
 
-	// TODO(ppacher): make cache limit configurable
-	const threshold = 200
+	filtered := make([]Event, 0, len(ec.events))
+	countBefore := len(ec.events)
 
-	if len(ec.events) < threshold {
-		return
-	}
-	evictLimit := len(ec.events) - threshold
-
-	now := time.Now()
-	currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-
-	var idx int
-	for idx = range ec.events {
-		if ec.events[idx].StartTime.After(currentMidnight) || ec.events[idx].StartTime.Before(currentMidnight) {
-			break
+	for _, evt := range ec.events {
+		if !currentMidnight.Before(evt.StartTime) {
+			filtered = append(filtered, evt)
+			continue
 		}
 
-		if idx > evictLimit {
-			break
+		if evt.EndTime != nil && !evt.EndTime.Before(currentMidnight) {
+			filtered = append(filtered, evt)
+			continue
 		}
 	}
 
-	if idx == 0 {
-		ec.log.Info("cannot evict cache entries for today.")
-		return
-	}
-
-	ec.events = ec.events[idx:]
+	ec.events = filtered
 	ec.minTime = currentMidnight
-	ec.log.Info("evicted events from cache", "evicted", idx, "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
+
+	ec.log.Info("evicted events from cache", "evicted", countBefore-len(filtered), "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
 }
 
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventSearchOptions) ([]Event, bool) {
