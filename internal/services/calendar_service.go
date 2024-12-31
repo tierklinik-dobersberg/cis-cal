@@ -82,10 +82,7 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 }
 
 func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Request[calendarv1.ListCalendarsRequest]) (*connect.Response[calendarv1.ListCalendarsResponse], error) {
-	res, err := svc.repo.ListCalendars(ctx)
-	if err != nil {
-		return nil, err
-	}
+	res, _ := svc.calendars.Get()
 
 	response := &calendarv1.ListCalendarsResponse{}
 
@@ -143,11 +140,9 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	}
 
 	var (
-		allCalendars      []repo.Calendar
 		mustLoadCalendars bool
 		mustLoadEvents    bool
 	)
-
 	for _, path := range readMask {
 		switch {
 		case strings.HasPrefix(path, "results.calendar"):
@@ -159,6 +154,9 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			mustLoadEvents = true
 		}
 	}
+
+	// get a list of all calendars from cache
+	allCalendars, _ := svc.calendars.Get()
 
 	// get a list of calendar ids to fetch
 	calendarIds := make(map[string]struct{})
@@ -203,7 +201,6 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			}
 
 		case *calendarv1.ListEventsRequest_AllCalendars:
-			allCalendars, _ = svc.calendars.Get()
 			for _, cal := range allCalendars {
 				calendarIds[cal.ID] = struct{}{}
 			}
@@ -220,18 +217,6 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 	if len(calendarIds) == 0 {
 		return nil, connect.NewError(connect.CodeAborted, fmt.Errorf("no calendars to query"))
-	}
-
-	// make sure we have all calendars loaded if requested
-	if mustLoadCalendars && len(allCalendars) == 0 {
-		var err error
-		log.L(ctx).Infof("read_mask requests calendar data, loading calendars")
-		allCalendars, err = svc.repo.ListCalendars(ctx)
-		if err != nil {
-			return nil, err
-		}
-	} else if mustLoadCalendars {
-		log.L(ctx).Infof("read_mask requests calendar data, data already loaded")
 	}
 
 	calendarIdList := maps.Keys(calendarIds)
@@ -304,6 +289,7 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 
 		duration = m.EndTime.Sub(m.StartTime)
 	} else {
+		// BUG(ppacher): this isn't persisted yet!
 		m.FullDayEvent = true
 	}
 
@@ -474,20 +460,13 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 }
 
 func (svc *CalendarService) resolveUserCalendar(ctx context.Context, id string) (string, error) {
-	user, err := svc.repo.Users.GetUser(ctx, connect.NewRequest(&idmv1.GetUserRequest{
-		Search: &idmv1.GetUserRequest_Id{
-			Id: id,
-		},
-		FieldMask: &fieldmaskpb.FieldMask{
-			Paths: []string{"profile.user.extra"},
-		},
-	}))
+	user, ok := svc.byUserId.Get(id)
 
-	if err != nil {
-		return "", err
+	if !ok {
+		return "", fmt.Errorf("failed to get user profile for id %q", id)
 	}
 
-	if cal := extractCalendarId(ctx, user.Msg.GetProfile()); cal != "" {
+	if cal := extractCalendarId(ctx, user); cal != "" {
 		return cal, nil
 	}
 
