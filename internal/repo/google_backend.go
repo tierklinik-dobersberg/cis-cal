@@ -160,7 +160,7 @@ func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID str
 		logrus.Debugf("cache miss when loading events for %s", calendarID)
 	}
 
-	return svc.loadEvents(ctx, calendarID, opts)
+	return svc.loadEvents(ctx, calendarID, opts, cache)
 }
 
 func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) (*Event, error) {
@@ -326,7 +326,7 @@ func (svc *googleCalendarBackend) LoadEvent(ctx context.Context, calendarID, eve
 }
 
 // trunk-ignore(golangci-lint/cyclop)
-func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID string, searchOpts *EventSearchOptions) ([]Event, error) {
+func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID string, searchOpts *EventSearchOptions, cache *googleEventCache) ([]Event, error) {
 	call := svc.Events.List(calendarID).ShowDeleted(false).SingleEvents(true)
 
 	key := calendarID
@@ -387,6 +387,11 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 			break
 		}
 
+		// if we got a cache, append the results to the cache
+		if cache != nil && searchOpts.FromTime != nil {
+			cache.appendEvents(events, *searchOpts.FromTime)
+		}
+
 		return events, nil
 	})
 
@@ -396,7 +401,9 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 	}
 
 	// trunk-ignore(golangci-lint/forcetypeassert)
-	return res.([]Event), err
+	result := res.([]Event)
+
+	return result, err
 }
 
 func (svc *googleCalendarBackend) shouldIngore(item *calendar.CalendarListEntry) bool {

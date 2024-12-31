@@ -268,8 +268,14 @@ func (ec *googleEventCache) evictEvents() {
 	ec.rw.Lock()
 	defer ec.rw.Unlock()
 
-	filtered := make([]Event, 0, len(ec.events))
 	countBefore := len(ec.events)
+
+	// only try to evict events if we have more than 500 per calendar cache.
+	if countBefore < 500 {
+		return
+	}
+
+	filtered := make([]Event, 0, len(ec.events))
 
 	for _, evt := range ec.events {
 		if !currentMidnight.Before(evt.StartTime) {
@@ -286,7 +292,31 @@ func (ec *googleEventCache) evictEvents() {
 	ec.events = filtered
 	ec.minTime = currentMidnight
 
-	ec.log.Info("evicted events from cache", "evicted", countBefore-len(filtered), "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
+	if len(filtered) > 0 {
+		ec.log.Info("evicted events from cache", "evicted", countBefore-len(filtered), "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
+	}
+}
+
+func (ec *googleEventCache) appendEvents(events []Event, minTime time.Time) {
+	ec.rw.Lock()
+	defer ec.rw.Unlock()
+
+	// create a lookup map of events we already have
+	lm := make(map[string]struct{}, len(ec.events))
+	for _, e := range ec.events {
+		lm[e.ID] = struct{}{}
+	}
+
+	// prepend all events to the cache
+	toAppend := make([]Event, 0, len(events))
+	for _, e := range events {
+		if _, ok := lm[e.ID]; !ok {
+			toAppend = append(toAppend, e)
+		}
+	}
+
+	ec.events = append(toAppend, ec.events...)
+	ec.minTime = minTime
 }
 
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventSearchOptions) ([]Event, bool) {
