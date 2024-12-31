@@ -240,6 +240,8 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	sort.Stable(sort.StringSlice(calendarIdList))
 
 	freeSlots := slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS)
+	onlyFreeSlots := !slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_EVENTS)
+
 	shiftsByCalendarId := make(map[string][]*rosterv1.PlannedShift)
 
 	// get the working-staff for those days and create a lookup map for all shifts, grouped-by date, grouped by calendar id.
@@ -311,7 +313,12 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 					slog.Warn("no shifts for the given calendar id", "calendar-id", calId)
 				}
 
-				events = append(events, slots...)
+				if onlyFreeSlots {
+					events = slots
+				} else {
+					events = append(events, slots...)
+				}
+
 				sort.Stable(repo.ByStartTime(events))
 			}
 		}
