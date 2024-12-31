@@ -59,6 +59,10 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 			startOfSlot = *filtered[i-1].EndTime
 		}
 
+		if startOfSlot.Before(start) {
+			startOfSlot = start
+		}
+
 		if i > 0 && filtered[i].StartTime.Before(filtered[i-1].StartTime) {
 			return nil, nil, fmt.Errorf("invalid slice sort")
 		}
@@ -67,6 +71,10 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 			endOfSlot = end
 		} else {
 			endOfSlot = filtered[i].StartTime
+		}
+
+		if endOfSlot.After(end) {
+			endOfSlot = end
 		}
 
 		slog.Info("checking slot", "start", startOfSlot.Format("15:04"), "end", endOfSlot.Format("15:04"))

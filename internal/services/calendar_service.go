@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -239,7 +240,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	calendarIdList := maps.Keys(calendarIds)
 	sort.Stable(sort.StringSlice(calendarIdList))
 
-	freeSlots := true // slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS)
+	freeSlots := os.Getenv("SLOTS") == "true" // slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS)
 	shiftsByCalendarId := make(map[string][]*rosterv1.PlannedShift)
 
 	// get the working-staff for those days and create a lookup map for all shifts, grouped-by date, grouped by calendar id.
