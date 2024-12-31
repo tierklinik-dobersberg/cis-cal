@@ -16,7 +16,7 @@ func (tr timeRange) includes(t time.Time) bool {
 	return (tr[0].Equal(t) || tr[0].Before(t)) && tr[1].After(t)
 }
 
-func calculateFreeSlots(calID string, start time.Time, end time.Time, events []repo.Event) ([]repo.Event, error) {
+func calculateFreeSlots(calID string, start time.Time, end time.Time, events []repo.Event) ([]repo.Event, []repo.Event, error) {
 	// find all events that are within start/end
 	filtered := make(repo.EventList, 0, len(events))
 
@@ -60,7 +60,7 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 		}
 
 		if i > 0 && filtered[i].StartTime.Before(filtered[i-1].StartTime) {
-			return nil, fmt.Errorf("invalid slice sort")
+			return nil, nil, fmt.Errorf("invalid slice sort")
 		}
 
 		if i == len(filtered) {
@@ -101,5 +101,5 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 	// sort the result
 	sort.Sort(result)
 
-	return result, nil
+	return result, slots, nil
 }
