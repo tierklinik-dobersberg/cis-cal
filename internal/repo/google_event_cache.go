@@ -23,7 +23,6 @@ type googleEventCache struct {
 	rw            sync.RWMutex
 	minTime       time.Time
 	syncToken     string
-	location      *time.Location
 	firstLoadDone chan struct{}
 	trigger       chan struct{}
 
@@ -41,12 +40,11 @@ func (ec *googleEventCache) String() string {
 }
 
 // nolint:unparam
-func newCache(ctx context.Context, id string, name string, loc *time.Location, svc *calendar.Service, eventCli eventsv1connect.EventServiceClient) (*googleEventCache, error) {
+func newCache(ctx context.Context, id string, name string, svc *calendar.Service, eventCli eventsv1connect.EventServiceClient) (*googleEventCache, error) {
 	cache := &googleEventCache{
 		calID:         id,
 		calendarName:  name,
 		svc:           svc,
-		location:      loc,
 		firstLoadDone: make(chan struct{}),
 		trigger:       make(chan struct{}),
 		eventService:  eventCli,
@@ -107,8 +105,8 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	call := ec.svc.Events.List(ec.calID)
 	if ec.syncToken == "" {
 		ec.events = nil
-		now := time.Now()
-		ec.minTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, ec.location)
+		now := time.Now().Local()
+		ec.minTime = now
 		call.ShowDeleted(false).SingleEvents(false).TimeMin(ec.minTime.Format(time.RFC3339))
 	} else {
 		call.SyncToken(ec.syncToken)
@@ -253,7 +251,7 @@ func (ec *googleEventCache) evictFromCache(ctx context.Context) {
 	evictLimit := len(ec.events) - threshold
 
 	now := time.Now()
-	currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, ec.location)
+	currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 
 	var idx int
 	for idx = range ec.events {
@@ -288,6 +286,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 
 	ec.rw.RLock()
 	defer ec.rw.RUnlock()
+
 	if search.FromTime.Before(ec.minTime) && !ec.minTime.IsZero() {
 		ec.log.Info("not using cache: search.from is before minTime", "search-time", search.FromTime, "min-time", ec.minTime)
 

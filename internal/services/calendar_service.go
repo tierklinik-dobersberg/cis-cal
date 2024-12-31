@@ -127,11 +127,11 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 	case *calendarv1.ListEventsRequest_TimeRange:
 		if v.TimeRange.From != nil && v.TimeRange.From.IsValid() {
-			opts = append(opts, repo.WithEventsAfter(v.TimeRange.From.AsTime()))
+			opts = append(opts, repo.WithEventsAfter(v.TimeRange.From.AsTime().Local()))
 		}
 
 		if v.TimeRange.To != nil && v.TimeRange.To.IsValid() {
-			opts = append(opts, repo.WithEventsBefore(v.TimeRange.To.AsTime()))
+			opts = append(opts, repo.WithEventsBefore(v.TimeRange.To.AsTime().Local()))
 		}
 	}
 

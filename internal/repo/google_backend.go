@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -46,7 +47,6 @@ type googleCalendarBackend struct {
 	*calendar.Service
 
 	EventsClient    eventsv1connect.EventServiceClient
-	location        *time.Location
 	ignoreCalendars []string
 
 	cacheLock   sync.Mutex
@@ -75,17 +75,13 @@ func New(ctx context.Context, cfg config.Config) (Service, error) {
 	svc := &googleCalendarBackend{
 		Service:         calSvc,
 		eventsCache:     make(map[string]*googleEventCache),
-		location:        time.UTC,
 		ignoreCalendars: cfg.IgnoreCalendars,
 		EventsClient:    eventsv1connect.NewEventServiceClient(cli.NewInsecureHttp2Client(), cfg.EventsServiceUrl),
-	}
-	if svc.location == nil {
-		svc.location = time.Local
 	}
 
 	// create a new eventCache for each calendar right now
 	if _, err := svc.ListCalendars(ctx); err != nil {
-		logrus.Errorf("failed to start watching calendars: %s", err)
+		slog.Error("failed to start watching calendars", "erro", err)
 	}
 
 	return svc, nil
@@ -120,7 +116,7 @@ func (svc *googleCalendarBackend) ListCalendars(ctx context.Context) ([]Calendar
 	for _, item := range res.Items {
 		loc, err := time.LoadLocation(item.TimeZone)
 		if err != nil {
-			logrus.Errorf("failed to parse timezone %s from calendar %s", item.TimeZone, item.Id)
+			slog.Error("failed to parse timezone from calendar", "time-zone", item.TimeZone, "calendar-id", item.Id)
 		}
 
 		// check if the calendar should be ingored based on IngoreCalendar=
@@ -289,7 +285,7 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 		return cache, nil
 	}
 
-	cache, err := newCache(ctx, calID, calID, svc.location, svc.Service, svc.EventsClient)
+	cache, err := newCache(ctx, calID, calID, svc.Service, svc.EventsClient)
 	if err != nil {
 		return nil, err
 	}
