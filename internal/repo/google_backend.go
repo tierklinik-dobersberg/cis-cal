@@ -335,14 +335,12 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 
 		upper := cache.currentMinTime()
 
-		if searchOpts.ToTime == nil {
-			searchOpts.ToTime = &upper
-		} else if searchOpts.ToTime.Before(upper) {
-			searchOpts.ToTime = &upper
+		if searchOpts.ToTime != nil && searchOpts.ToTime.After(upper) {
+			upper = *searchOpts.ToTime
 		}
 
-		call = call.TimeMax(searchOpts.ToTime.Format(time.RFC3339))
-		key += fmt.Sprintf("-%s", searchOpts.ToTime.Format(time.RFC3339))
+		call = call.TimeMax(upper.Format(time.RFC3339))
+		key += fmt.Sprintf("-%s", upper.Format(time.RFC3339))
 
 		if searchOpts.EventID != nil {
 			key += "-" + *searchOpts.EventID
