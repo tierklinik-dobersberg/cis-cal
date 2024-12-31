@@ -286,12 +286,14 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 				return nil, err
 			}
 
+			sort.Stable(repo.EventList(events))
+
 			var slots []repo.Event
 			if freeSlots {
 				shifts, ok := shiftsByCalendarId[calId]
 				if ok {
 					for _, shift := range shifts {
-						_, free, err := calculateFreeSlots(calId, shift.From.AsTime(), shift.To.AsTime(), events)
+						_, free, err := calculateFreeSlots(calId, shift.From.AsTime().Local(), shift.To.AsTime().Local(), events)
 						if err != nil {
 							slog.Error("failed to calculate free slots", "error", err, "calendar-id", calId)
 						} else {
