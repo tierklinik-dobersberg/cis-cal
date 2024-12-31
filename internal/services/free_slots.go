@@ -25,7 +25,6 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 	for _, evt := range events {
 		// skip full day events and events without an end date
 		if evt.EndTime == nil || evt.FullDayEvent || evt.EndTime.IsZero() {
-			slog.Info("skipping fullday event")
 			continue
 		}
 
@@ -43,8 +42,6 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 
 	// sort all filtered events
 	sort.Sort(filtered)
-
-	slog.Info("filtered events", "count", len(filtered))
 
 	var slots repo.EventList
 	for i := 0; i < len(filtered); i++ {
@@ -80,8 +77,6 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 		if endOfSlot.After(end) {
 			endOfSlot = end
 		}
-
-		slog.Info("checking slot", "start", startOfSlot.Format("15:04"), "end", endOfSlot.Format("15:04"))
 
 		if endOfSlot.Sub(startOfSlot) > time.Minute {
 			slots = append(slots, repo.Event{
