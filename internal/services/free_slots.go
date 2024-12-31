@@ -77,6 +77,7 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 				StartTime:  startOfSlot,
 				EndTime:    &endOfSlot,
 				ID:         "free-slot-" + strconv.Itoa(i),
+				Summary:    "Freier Slot für " + endOfSlot.Sub(startOfSlot).String(),
 			})
 		}
 	}
@@ -90,6 +91,7 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 				CalendarID: calID,
 				StartTime:  *last.EndTime,
 				EndTime:    &end,
+				Summary:    "Freier Slot für " + end.Sub(*last.EndTime).String(),
 			})
 		}
 	}
