@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -11,7 +13,12 @@ import (
 	"github.com/mennanov/fmutils"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
+	commonv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/common/v1"
 	idmv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1"
+	rosterv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/roster/v1"
+	"github.com/tierklinik-dobersberg/apis/pkg/data"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/consuldiscover"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/wellknown"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/app"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/cache"
@@ -99,7 +106,11 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 }
 
 func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request[calendarv1.ListEventsRequest]) (*connect.Response[calendarv1.ListEventsResponse], error) {
-	var opts []repo.SearchOption
+	var (
+		opts  []repo.SearchOption
+		start time.Time
+		end   time.Time
+	)
 
 	switch v := req.Msg.SearchTime.(type) {
 	case *calendarv1.ListEventsRequest_Date:
@@ -120,6 +131,9 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 		nextDay := day.Add(time.Hour * 24)
 
+		start = day
+		end = nextDay
+
 		opts = append(opts, []repo.SearchOption{
 			repo.WithEventsAfter(day),
 			repo.WithEventsBefore(nextDay),
@@ -128,10 +142,12 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	case *calendarv1.ListEventsRequest_TimeRange:
 		if v.TimeRange.From != nil && v.TimeRange.From.IsValid() {
 			opts = append(opts, repo.WithEventsAfter(v.TimeRange.From.AsTime().Local()))
+			start = v.TimeRange.From.AsTime()
 		}
 
 		if v.TimeRange.To != nil && v.TimeRange.To.IsValid() {
 			opts = append(opts, repo.WithEventsBefore(v.TimeRange.To.AsTime().Local()))
+			end = v.TimeRange.To.AsTime()
 		}
 	}
 
@@ -220,8 +236,20 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeAborted, fmt.Errorf("no calendars to query"))
 	}
 
+	freeSlots := true // slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS)
+
 	calendarIdList := maps.Keys(calendarIds)
 	sort.Stable(sort.StringSlice(calendarIdList))
+
+	if freeSlots {
+		shifts, err := svc.fetchRoster(ctx, start, end)
+		if err != nil {
+			slog.Error("failed to fetch roster for the requested date", "error", err)
+		} else {
+			// nothing to do for now since we are in testing phase
+			slog.Info("got working shifts", "number-of-days", len(shifts))
+		}
+	}
 
 	response := &calendarv1.ListEventsResponse{}
 	for _, calId := range calendarIdList {
@@ -269,6 +297,69 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	fmutils.Filter(response, readMask)
 
 	return connect.NewResponse(response), nil
+}
+
+func (svc *CalendarService) fetchRoster(ctx context.Context, start, end time.Time) (map[string][]*rosterv1.PlannedShift, error) {
+	// fetch all rosters of the configured type for the whole time range
+	// we use consuldiscover here
+	disc, err := consuldiscover.NewFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get consul discovery client: %w", err)
+	}
+
+	rosterClient, err := wellknown.RosterService.Create(ctx, disc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roster service client: %w", err)
+	}
+
+	shiftClient, err := wellknown.WorkShiftService.Create(ctx, disc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get workshift service client: %w", err)
+	}
+
+	// TODO(ppacher): perform the following calles in parallel
+
+	res, err := rosterClient.GetWorkingStaff2(ctx, connect.NewRequest(&rosterv1.GetWorkingStaffRequest2{
+		Query: &rosterv1.GetWorkingStaffRequest2_TimeRange{
+			TimeRange: commonv1.NewTimeRange(start, end),
+		},
+		RosterTypeName: "Tierärzte", // TODO(ppacher): make this configurable
+	}))
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve working staff: %w", err)
+	}
+
+	// load shift definitions as well
+	shiftDefRes, err := shiftClient.ListWorkShifts(ctx, connect.NewRequest(&rosterv1.ListWorkShiftsRequest{}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get work shift definitions: %w", err)
+	}
+
+	// create a lookup map for the shift definitions
+	lm := data.IndexSlice(shiftDefRes.Msg.WorkShifts, func(item *rosterv1.WorkShift) string {
+		return item.Id
+	})
+
+	shifts := make(map[string][]*rosterv1.PlannedShift, len(res.Msg.CurrentShifts))
+	for _, s := range res.Msg.CurrentShifts {
+		def, ok := lm[s.WorkShiftId]
+		if !ok {
+			slog.Warn("failed to get workshift definition", "workshift-id", s.WorkShiftId)
+			continue
+		}
+
+		// skip on-call shifts
+		// TODO(ppacher): make the tag configurable and also support multiple tags.
+		if slices.Contains(def.Tags, "on-call") {
+			continue
+		}
+
+		k := s.From.AsTime().Format("2006-01-02")
+		shifts[k] = append(shifts[k], s)
+	}
+
+	return shifts, nil
 }
 
 func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Request[calendarv1.CreateEventRequest]) (*connect.Response[calendarv1.CreateEventResponse], error) {

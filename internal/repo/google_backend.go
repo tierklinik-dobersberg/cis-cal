@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log/slog"
 	"net/http"
+	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +132,7 @@ func (svc *googleCalendarBackend) ListCalendars(ctx context.Context) ([]Calendar
 			Location: loc,
 			Color:    item.BackgroundColor,
 		})
+
 		// immediately prepare the calendar cache
 		if _, err = svc.cacheFor(ctx, item.Id); err != nil {
 			logrus.Errorf("failed to perpare calendar event cache for %s: %s", item.Id, err)
@@ -419,17 +421,11 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 }
 
 func (svc *googleCalendarBackend) shouldIngore(item *calendar.CalendarListEntry) bool {
-	for _, value := range svc.ignoreCalendars {
-		if item.Id == value {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(svc.ignoreCalendars, item.Id)
 }
 
 func tokenFromFile(path string) (*oauth2.Token, error) {
-	content, err := ioutil.ReadFile(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
@@ -448,11 +444,11 @@ func saveTokenFile(token *oauth2.Token, path string) error {
 		return fmt.Errorf("failed to marshal JSON token: %w", err)
 	}
 
-	return ioutil.WriteFile(path, blob, 0600)
+	return os.WriteFile(path, blob, 0600)
 }
 
 func credsFromFile(path string) (*oauth2.Config, error) {
-	content, err := ioutil.ReadFile(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
