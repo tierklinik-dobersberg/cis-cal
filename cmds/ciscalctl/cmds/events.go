@@ -143,13 +143,15 @@ func GetUpdateEventCommand(root *cli.Root) *cobra.Command {
 
 func GetEventsCommand(root *cli.Root) *cobra.Command {
 	var (
-		calendarIds []string
-		userIds     []string
-		all         string
-		date        string
-		from        string
-		to          string
-		readMask    []string
+		calendarIds   []string
+		userIds       []string
+		all           string
+		date          string
+		from          string
+		to            string
+		readMask      []string
+		freeSlots     bool
+		onlyFreeSlots bool
 	)
 
 	cmd := &cobra.Command{
@@ -222,6 +224,19 @@ func GetEventsCommand(root *cli.Root) *cobra.Command {
 				}
 			}
 
+			if freeSlots {
+				req.RequestKinds = []calendarv1.CalenarEventRequestKind{
+					calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_EVENTS,
+					calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS,
+				}
+			}
+
+			if onlyFreeSlots {
+				req.RequestKinds = []calendarv1.CalenarEventRequestKind{
+					calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS,
+				}
+			}
+
 			events, err := cli.ListEvents(context.Background(), connect.NewRequest(req))
 			if err != nil {
 				logrus.Fatalf("failed to get event list: %s", err)
@@ -240,7 +255,11 @@ func GetEventsCommand(root *cli.Root) *cobra.Command {
 		f.StringVar(&from, "from", "", "")
 		f.StringVar(&to, "to", "", "")
 		f.StringSliceVar(&readMask, "fields", nil, "A list of fields to query.")
+		f.BoolVar(&freeSlots, "include-free", false, "Include free slots")
+		f.BoolVar(&onlyFreeSlots, "only-free", false, "Include free slots")
 	}
+
+	cmd.MarkFlagsMutuallyExclusive("include-free", "only-free")
 
 	cmd.AddCommand(
 		GetMoveEventCommand(root),
