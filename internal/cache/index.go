@@ -1,6 +1,10 @@
 package cache
 
-import "sync"
+import (
+	"iter"
+	"maps"
+	"sync"
+)
 
 type Index[K comparable, T any] struct {
 	l      sync.RWMutex
@@ -23,6 +27,13 @@ func (i *Index[K, T]) Get(key K) (T, bool) {
 	val, ok := i.values[key]
 
 	return val, ok
+}
+
+func (i *Index[K, T]) Keys() iter.Seq[K] {
+	i.l.RLock()
+	defer i.l.RUnlock()
+
+	return maps.Keys(i.values)
 }
 
 func (i *Index[K, T]) Update(values []T) {

@@ -25,9 +25,15 @@ import (
 type CalendarService struct {
 	calendarv1connect.UnimplementedCalendarServiceHandler
 
-	users        *cache.Cache[*idmv1.Profile]
-	byUserId     *cache.Index[string, *idmv1.Profile]
-	byCalendarId *cache.Index[string, *idmv1.Profile]
+	// User cache and various indexes.
+
+	users       *cache.Cache[*idmv1.Profile]
+	byUserId    *cache.Index[string, *idmv1.Profile]
+	userByCalId *cache.Index[string, *idmv1.Profile]
+
+	// Calendar cache and various indexes.
+	calendars    *cache.Cache[repo.Calendar]
+	calendarById *cache.Index[string, repo.Calendar]
 
 	repo *app.App
 }
@@ -35,7 +41,7 @@ type CalendarService struct {
 func New(ctx context.Context, svc *app.App) *CalendarService {
 
 	// create a new user profile cache.
-	c := cache.NewCache("profiles", time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
+	profileCache := cache.NewCache("profiles", time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
 		res, err := svc.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
 			FieldMask: &fieldmaskpb.FieldMask{
 				Paths: []string{"users.user.extra", "users.user.id"},
@@ -48,18 +54,27 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 
 		return res.Msg.Users, nil
 	}))
+	profileCache.Start(ctx)
 
-	c.Start(ctx)
+	// create a new calendar cache
+	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[repo.Calendar](svc.ListCalendars))
+	calendarCache.Start(ctx)
 
 	s := &CalendarService{
 		repo:  svc,
-		users: c,
-		byUserId: cache.CreateIndex(c, func(p *idmv1.Profile) (string, bool) {
+		users: profileCache,
+
+		byUserId: cache.CreateIndex(profileCache, func(p *idmv1.Profile) (string, bool) {
 			return p.User.Id, true
 		}),
-		byCalendarId: cache.CreateIndex(c, func(p *idmv1.Profile) (string, bool) {
+		userByCalId: cache.CreateIndex(profileCache, func(p *idmv1.Profile) (string, bool) {
 			calId := extractCalendarId(ctx, p)
 			return calId, calId != ""
+		}),
+
+		calendars: calendarCache,
+		calendarById: cache.CreateIndex(calendarCache, func(c repo.Calendar) (string, bool) {
+			return c.ID, true
 		}),
 	}
 
@@ -151,19 +166,12 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		// only load the calendar assigned to the user
 
 		log.L(ctx).Infof("no calendar ids specified, loading user profile ...")
-		user, err := svc.repo.Users.GetUser(ctx, connect.NewRequest(&idmv1.GetUserRequest{
-			Search: &idmv1.GetUserRequest_Id{
-				Id: req.Header().Get("X-Remote-User-ID"),
-			},
-			FieldMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"profile.user.extra", "profile.user.id"},
-			},
-		}))
-		if err != nil {
-			return nil, err
+		user, ok := svc.byUserId.Get(req.Header().Get("X-Remote-User-ID"))
+		if !ok {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get authenticated user profile"))
 		}
 
-		if calId := extractCalendarId(ctx, user.Msg.Profile); calId != "" {
+		if calId := extractCalendarId(ctx, user); calId != "" {
 			calendarIds[calId] = struct{}{}
 		}
 	} else {
@@ -181,16 +189,8 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 					userSet[usr] = struct{}{}
 				}
 
-				users, err := svc.repo.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
-					FieldMask: &fieldmaskpb.FieldMask{
-						Paths: []string{"users.user.extra", "users.user.id"},
-					},
-				}))
-				if err != nil {
-					return nil, err
-				}
-
-				for _, profile := range users.Msg.Users {
+				profiles, _ := svc.users.Get()
+				for _, profile := range profiles {
 					if _, ok := userSet[profile.User.Id]; !ok {
 						continue
 					}
@@ -201,32 +201,18 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 					}
 				}
 			}
-		case *calendarv1.ListEventsRequest_AllCalendars:
-			var err error
-			allCalendars, err = svc.repo.ListCalendars(ctx)
-			if err != nil {
-				return nil, err
-			}
 
+		case *calendarv1.ListEventsRequest_AllCalendars:
+			allCalendars, _ = svc.calendars.Get()
 			for _, cal := range allCalendars {
 				calendarIds[cal.ID] = struct{}{}
 			}
 
 		case *calendarv1.ListEventsRequest_AllUsers:
-			users, err := svc.repo.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
-				FieldMask: &fieldmaskpb.FieldMask{
-					Paths: []string{"users.user.extra"},
-				},
-			}))
-			if err != nil {
-				return nil, err
+			for calId := range svc.userByCalId.Keys() {
+				calendarIds[calId] = struct{}{}
 			}
 
-			for _, profile := range users.Msg.Users {
-				if calId := extractCalendarId(ctx, profile); calId != "" {
-					calendarIds[calId] = struct{}{}
-				}
-			}
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupported source specification"))
 		}
@@ -235,8 +221,6 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	if len(calendarIds) == 0 {
 		return nil, connect.NewError(connect.CodeAborted, fmt.Errorf("no calendars to query"))
 	}
-
-	calendarById := make(map[string]repo.Calendar)
 
 	// make sure we have all calendars loaded if requested
 	if mustLoadCalendars && len(allCalendars) == 0 {
@@ -248,11 +232,6 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 	} else if mustLoadCalendars {
 		log.L(ctx).Infof("read_mask requests calendar data, data already loaded")
-	}
-
-	// build a lookup map for the calendars (if we have some)
-	for _, cal := range allCalendars {
-		calendarById[cal.ID] = cal
 	}
 
 	calendarIdList := maps.Keys(calendarIds)
@@ -276,7 +255,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			Events: make([]*calendarv1.CalendarEvent, len(events)),
 		}
 
-		if cal, ok := calendarById[calId]; mustLoadCalendars && ok {
+		if cal, ok := svc.calendarById.Get(calId); mustLoadCalendars && ok {
 			calendarEvents.Calendar = &calendarv1.Calendar{
 				Id:       cal.ID,
 				Name:     cal.Name,
