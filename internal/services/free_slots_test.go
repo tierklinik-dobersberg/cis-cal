@@ -66,6 +66,15 @@ func Test_FreeSlots(t *testing.T) {
 			[]timeRange{},
 		},
 		{
+			makeRange("06:00", "12:00"),
+			[]timeRange{
+				makeRange("04:00", "04:15"),
+			},
+			[]timeRange{
+				makeRange("06:00", "12:00"),
+			},
+		},
+		{
 			makeRange("12:00", "14:00"),
 			[]timeRange{
 				makeRange("06:00", "06:30"),
@@ -86,14 +95,12 @@ func Test_FreeSlots(t *testing.T) {
 			})
 		}
 
-		result, err := calculateFreeSlots("", c.Range[0], c.Range[1], events)
+		_, result, err := calculateFreeSlots("", c.Range[0], c.Range[1], events)
 		require.NoError(t, err)
 
 		slots := make([]timeRange, 0, len(result))
 		for _, e := range result {
-			if e.ID != "" {
-				slots = append(slots, timeRange{e.StartTime, *e.EndTime})
-			}
+			slots = append(slots, timeRange{e.StartTime, *e.EndTime})
 		}
 
 		assert.Equal(t, c.Slots, slots)

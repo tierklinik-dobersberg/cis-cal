@@ -102,6 +102,15 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 				Summary:    "Freier Slot für " + end.Sub(*last.EndTime).String(),
 			})
 		}
+	} else {
+		// there are no filtered slots at all, so it seems like the whole time-range is free
+		slots = append(slots, repo.Event{
+			ID:         "free-slot-end",
+			CalendarID: calID,
+			StartTime:  start,
+			EndTime:    &end,
+			Summary:    "Freier Slot für " + end.Sub(start).String(),
+		})
 	}
 
 	result := append(filtered, slots...)
