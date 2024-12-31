@@ -109,9 +109,9 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		)
 
 		if strings.Contains(v.Date, "/") {
-			day, err = time.Parse("2006/01/02", v.Date)
+			day, err = time.ParseInLocation("2006/01/02", v.Date, time.Local)
 		} else {
-			day, err = time.Parse("2006-01-02", v.Date)
+			day, err = time.ParseInLocation("2006-01-02", v.Date, time.Local)
 		}
 
 		if err != nil {
@@ -124,6 +124,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			repo.WithEventsAfter(day),
 			repo.WithEventsBefore(nextDay),
 		}...)
+
 	case *calendarv1.ListEventsRequest_TimeRange:
 		if v.TimeRange.From != nil && v.TimeRange.From.IsValid() {
 			opts = append(opts, repo.WithEventsAfter(v.TimeRange.From.AsTime()))
