@@ -123,7 +123,7 @@ func (c *Cache[T]) Start(ctx context.Context) {
 
 					c.updateIndexes(values)
 
-					c.log.Error("successfully updated cache values", "count", len(values))
+					c.log.Info("successfully updated cache values", "count", len(values))
 				}
 
 				select {
