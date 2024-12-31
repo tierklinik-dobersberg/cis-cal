@@ -236,18 +236,39 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeAborted, fmt.Errorf("no calendars to query"))
 	}
 
-	freeSlots := true // slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS)
-
 	calendarIdList := maps.Keys(calendarIds)
 	sort.Stable(sort.StringSlice(calendarIdList))
 
+	freeSlots := true // slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_FREE_SLOTS)
+	shiftsByCalendarId := make(map[string][]*rosterv1.PlannedShift)
+
+	// get the working-staff for those days and create a lookup map for all shifts, grouped-by date, grouped by calendar id.
 	if freeSlots {
 		shifts, err := svc.fetchRoster(ctx, start, end)
 		if err != nil {
 			slog.Error("failed to fetch roster for the requested date", "error", err)
 		} else {
-			// nothing to do for now since we are in testing phase
 			slog.Info("got working shifts", "number-of-days", len(shifts))
+
+			for _, shifts := range shifts {
+				for _, shift := range shifts {
+					for _, user := range shift.AssignedUserIds {
+						profile, ok := svc.byUserId.Get(user)
+						if !ok {
+							slog.Warn("failed to get user profile from cache", "user-id", user)
+							continue
+						}
+
+						calendarId := extractCalendarId(ctx, profile)
+						if calendarId == "" {
+							// this user does not have a work-calendar assigned
+							continue
+						}
+
+						shiftsByCalendarId[calendarId] = append(shiftsByCalendarId[calendarId], shift)
+					}
+				}
+			}
 		}
 	}
 
@@ -258,10 +279,33 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			err    error
 		)
 
-		if mustLoadEvents {
+		if mustLoadEvents || freeSlots {
 			events, err = svc.repo.ListEvents(ctx, calId, opts...)
 			if err != nil {
 				return nil, err
+			}
+
+			var slots []repo.Event
+			if freeSlots {
+				shifts, ok := shiftsByCalendarId[calId]
+				if ok {
+					for _, shift := range shifts {
+						freeSlots, err := calculateFreeSlots(calId, shift.From.AsTime(), shift.To.AsTime(), events)
+						if err == nil {
+							slots = append(slots, freeSlots...)
+						} else {
+							slog.Error("failed to calculate free slots", "error", err, "calendar-id", calId)
+						}
+					}
+				} else {
+					slog.Warn("no shifts for the given calendar id", "calendar-id", calId)
+				}
+
+				slog.Info("found free slots", "count", len(slots))
+
+				events = append(events, slots...)
+
+				sort.Stable(repo.ByStartTime(events))
 			}
 		}
 
