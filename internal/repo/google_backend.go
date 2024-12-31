@@ -401,11 +401,15 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 		return nil, fmt.Errorf("failed to fetch events: %w", err)
 	}
 
-	if searchOpts.EventID != nil {
+	// if we did not have any search-opts, searched for a single event ID or do not have a start
+	// time we return the result immediately from the fetched result.
+	if searchOpts == nil || searchOpts.EventID != nil || searchOpts.FromTime == nil {
+		// trunk-ignore(golangci-lint/forcetypeassert)
 		return res.([]Event), nil
 	}
 
-	// trunk-ignore(golangci-lint/forcetypeassert)
+	// otherwise, the result should have been appended to the cache so it's now save
+	// to query the cache again.
 	result, ok := cache.tryLoadFromCache(ctx, searchOpts)
 	if !ok {
 		return nil, fmt.Errorf("internal server error, cache should be able to fullfill request now")
