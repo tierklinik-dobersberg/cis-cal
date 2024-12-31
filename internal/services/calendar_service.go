@@ -94,11 +94,17 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 	response := &calendarv1.ListCalendarsResponse{}
 
 	for _, cal := range res {
+		var userId string
+		if user, ok := svc.userByCalId.Get(cal.ID); ok {
+			userId = user.User.Id
+		}
+
 		response.Calendars = append(response.Calendars, &calendarv1.Calendar{
 			Id:       cal.ID,
 			Name:     cal.Name,
 			Timezone: cal.Timezone,
 			Color:    cal.Color,
+			UserId:   userId,
 		})
 	}
 
@@ -328,11 +334,17 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 
 		if cal, ok := svc.calendarById.Get(calId); mustLoadCalendars && ok {
+			var userId string
+			if user, ok := svc.userByCalId.Get(calId); ok {
+				userId = user.User.Id
+			}
+
 			calendarEvents.Calendar = &calendarv1.Calendar{
 				Id:       cal.ID,
 				Name:     cal.Name,
 				Timezone: cal.Timezone,
 				Color:    cal.Color,
+				UserId:   userId,
 			}
 		}
 
