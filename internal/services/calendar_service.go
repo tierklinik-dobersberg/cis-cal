@@ -52,7 +52,7 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 	profileCache := cache.NewCache("profiles", time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
 		res, err := svc.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
 			FieldMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"users.user.extra", "users.user.id", "user.user.username"},
+				Paths: []string{"users.user.extra", "users.user.id", "users.user.username"},
 			},
 		}))
 
