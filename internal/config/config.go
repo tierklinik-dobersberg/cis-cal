@@ -19,6 +19,10 @@ type Config struct {
 	AllowedOrigins   []string `json:"allowedOrigins"`
 	ListenAddress    string   `json:"listen"`
 	DefaultCountry   string   `json:"defaultCountry"`
+	FreeSlots        struct {
+		IgnoreShiftTags []string `json:"ignoreShiftTags"`
+		RosterTypeName  string   `json:"rosterTypeName"`
+	} `json:"freeSlots"`
 }
 
 // LoadConfig loads the configuration file from cfgPath.

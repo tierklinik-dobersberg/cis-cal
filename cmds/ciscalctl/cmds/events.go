@@ -206,7 +206,7 @@ func GetEventsCommand(root *cli.Root) *cobra.Command {
 					req.Source = &calendarv1.ListEventsRequest_Sources{
 						Sources: &calendarv1.EventSource{
 							CalendarIds: calendarIds,
-							UserIds:     userIds,
+							UserIds:     root.MustResolveUserIds(userIds),
 						},
 					}
 				}

@@ -393,7 +393,7 @@ func (svc *CalendarService) fetchRoster(ctx context.Context, start, end time.Tim
 		Query: &rosterv1.GetWorkingStaffRequest2_TimeRange{
 			TimeRange: commonv1.NewTimeRange(start, end),
 		},
-		RosterTypeName: "Tierärzte", // TODO(ppacher): make this configurable
+		RosterTypeName: svc.repo.Config.FreeSlots.RosterTypeName,
 	}))
 
 	if err != nil {
@@ -420,8 +420,7 @@ func (svc *CalendarService) fetchRoster(ctx context.Context, start, end time.Tim
 		}
 
 		// skip on-call shifts
-		// TODO(ppacher): make the tag configurable and also support multiple tags.
-		if slices.Contains(def.Tags, "oncall") || slices.Contains(def.Tags, "gt-oncall") {
+		if data.ElemInBothSlices(def.Tags, svc.repo.Config.FreeSlots.IgnoreShiftTags) {
 			continue
 		}
 
