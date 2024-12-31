@@ -106,7 +106,9 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	if ec.syncToken == "" {
 		ec.events = nil
 		now := time.Now().Local()
-		ec.minTime = now
+		currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+		ec.minTime = currentMidnight
+
 		call.ShowDeleted(false).SingleEvents(false).TimeMin(ec.minTime.Format(time.RFC3339))
 	} else {
 		call.SyncToken(ec.syncToken)
@@ -255,9 +257,10 @@ func (ec *googleEventCache) evictFromCache(ctx context.Context) {
 
 	var idx int
 	for idx = range ec.events {
-		if ec.events[idx].StartTime.After(currentMidnight) {
+		if ec.events[idx].StartTime.After(currentMidnight) || ec.events[idx].StartTime.Before(currentMidnight) {
 			break
 		}
+
 		if idx > evictLimit {
 			break
 		}
@@ -269,7 +272,7 @@ func (ec *googleEventCache) evictFromCache(ctx context.Context) {
 	}
 
 	ec.events = ec.events[idx:]
-	ec.minTime = ec.events[0].StartTime
+	ec.minTime = currentMidnight
 	ec.log.Info("evicted events from cache", "evicted", idx, "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
 }
 
