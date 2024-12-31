@@ -31,6 +31,7 @@ type googleEventCache struct {
 	events       []Event
 	svc          *calendar.Service
 	eventService eventsv1connect.EventServiceClient
+	wg           sync.WaitGroup
 
 	log *slog.Logger
 }
@@ -51,7 +52,11 @@ func newCache(ctx context.Context, id string, name string, svc *calendar.Service
 		log:           slog.With("calendar", name, "id", id),
 	}
 
+	cache.wg.Add(2)
+
 	go cache.watch(ctx)
+	go cache.evicter(ctx)
+
 	<-cache.firstLoadDone
 
 	return cache, nil
@@ -65,6 +70,8 @@ func (ec *googleEventCache) triggerSync() {
 }
 
 func (ec *googleEventCache) watch(ctx context.Context) {
+	defer ec.wg.Done()
+
 	waitTime := time.Minute
 	firstLoad := true
 	for {
@@ -86,8 +93,6 @@ func (ec *googleEventCache) watch(ctx context.Context) {
 			firstLoad = false
 			close(ec.firstLoadDone)
 		}
-
-		ec.evictFromCache(ctx)
 
 		select {
 		case <-ctx.Done():
@@ -240,7 +245,23 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 	return evt, "created"
 }
 
-func (ec *googleEventCache) evictFromCache(ctx context.Context) {
+func (ec *googleEventCache) evicter(ctx context.Context) {
+	defer ec.wg.Done()
+
+	ticker := time.NewTicker(time.Hour)
+
+	for {
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return
+		}
+
+		ec.evictEvents()
+	}
+}
+
+func (ec *googleEventCache) evictEvents() {
 	now := time.Now().Local()
 	currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 
