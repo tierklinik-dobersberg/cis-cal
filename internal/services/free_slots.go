@@ -78,13 +78,14 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 			endOfSlot = end
 		}
 
-		if endOfSlot.Sub(startOfSlot) > time.Minute {
+		if endOfSlot.Sub(startOfSlot) > time.Minute*5 {
 			slots = append(slots, repo.Event{
 				CalendarID: calID,
 				StartTime:  startOfSlot,
 				EndTime:    &endOfSlot,
 				ID:         "free-slot-" + strconv.Itoa(i),
 				Summary:    "Freier Slot für " + endOfSlot.Sub(startOfSlot).String(),
+				IsFree:     true,
 			})
 		}
 	}
@@ -99,6 +100,7 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 				StartTime:  *last.EndTime,
 				EndTime:    &end,
 				Summary:    "Freier Slot für " + end.Sub(*last.EndTime).String(),
+				IsFree:     true,
 			})
 		}
 	} else {
@@ -109,6 +111,7 @@ func calculateFreeSlots(calID string, start time.Time, end time.Time, events []r
 			StartTime:  start,
 			EndTime:    &end,
 			Summary:    "Freier Slot für " + end.Sub(start).String(),
+			IsFree:     true,
 		})
 	}
 
