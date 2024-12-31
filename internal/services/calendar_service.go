@@ -52,7 +52,7 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 	profileCache := cache.NewCache("profiles", time.Minute*5, cache.LoaderFunc[*idmv1.Profile](func(ctx context.Context) ([]*idmv1.Profile, error) {
 		res, err := svc.Users.ListUsers(ctx, connect.NewRequest(&idmv1.ListUsersRequest{
 			FieldMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"users.user.extra", "users.user.id"},
+				Paths: []string{"users.user.extra", "users.user.id", "user.user.username"},
 			},
 		}))
 
@@ -299,7 +299,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 							username = profile.User.Username
 						}
 
-						slog.Info("getting free slots for shift", "user", username, "shift-id", shift.UniqueId, "workshift-id", shift.WorkShiftId, "start", shift.From, "to", shift.To, "calendar-id", calId)
+						slog.Info("getting free slots for shift", "user", username, "shift-id", shift.UniqueId, "workshift-id", shift.WorkShiftId, "start", shift.From.AsTime(), "to", shift.To.AsTime(), "calendar-id", calId)
 
 						_, free, err := calculateFreeSlots(calId, shift.From.AsTime().Local(), shift.To.AsTime().Local(), events)
 						if err != nil {
