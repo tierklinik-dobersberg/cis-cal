@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ type Event struct {
 	FullDayEvent bool
 	Data         *StructuredEvent
 	IsFree       bool
+	CreateTime   time.Time
 }
 
 type EventList []Event
@@ -151,6 +153,17 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 		item.Description = newDescription
 	}
 
+	var createTime time.Time
+	if item.Created != "" {
+		var err error
+
+		createTime, err = time.Parse(time.RFC3339, item.Created)
+		if err != nil {
+			// log the error but continue since it's not that important to have the create time.
+			slog.Error("failed to parse calendar event create time", "error", err, "time", item.Created)
+		}
+	}
+
 	return &Event{
 		ID:           item.Id,
 		Summary:      strings.TrimSpace(item.Summary),
@@ -160,6 +173,7 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 		FullDayEvent: item.Start.DateTime == "" && item.Start.Date != "",
 		CalendarID:   calid,
 		Data:         data,
+		CreateTime:   createTime,
 	}, nil
 }
 
@@ -219,6 +233,12 @@ func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
 		}
 	}
 
+	var createTime *timestamppb.Timestamp
+
+	if !model.CreateTime.IsZero() {
+		createTime = timestamppb.New(model.CreateTime)
+	}
+
 	return &calendarv1.CalendarEvent{
 		Id:          model.ID,
 		CalendarId:  model.CalendarID,
@@ -229,6 +249,7 @@ func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
 		Summary:     model.Summary,
 		Description: model.Description,
 		IsFree:      model.IsFree,
+		CreateTime:  createTime,
 	}, nil
 
 }
