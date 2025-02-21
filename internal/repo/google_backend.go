@@ -1,7 +1,6 @@
 package repo
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -175,19 +173,6 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 		attribute.String("calendar.start_time", startTime.String()),
 		attribute.String("calendar.duration", duration.String()),
 	)
-
-	// convert structured event data to it's string representation
-	// and append to description.
-	if data != nil {
-		buf := new(bytes.Buffer)
-		enc := json.NewEncoder(buf)
-
-		if err := enc.Encode(data); err != nil {
-			return nil, err
-		}
-
-		description = strings.TrimSpace(description) + "\n\n[CIS]\n" + buf.String()
-	}
 
 	var props map[string]string
 	if data != nil {
