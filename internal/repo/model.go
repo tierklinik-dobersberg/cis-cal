@@ -2,7 +2,6 @@ package repo
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -34,9 +34,10 @@ type Event struct {
 	EndTime      *time.Time
 	CalendarID   string
 	FullDayEvent bool
-	Data         *StructuredEvent
 	IsFree       bool
 	CreateTime   time.Time
+
+	CustomerAnnotation *calendarv1.CustomerAnnotation
 }
 
 type EventList []Event
@@ -51,14 +52,6 @@ func (el EventList) Less(i, j int) bool {
 }
 func (el EventList) Swap(i, j int) {
 	el[i], el[j] = el[j], el[i]
-}
-
-type StructuredEvent struct {
-	CustomerSource    string
-	CustomerID        string
-	AnimalID          []string
-	CreatedBy         string
-	RequiredResources []string
 }
 
 type EventSearchOptions struct {
@@ -145,14 +138,6 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 		end = &t
 	}
 
-	newDescription, data, err := parseDescription(item.Description)
-	if err != nil {
-		logrus.Errorf("failed to parse calendar event meta data: %s", err)
-	}
-	if err == nil {
-		item.Description = newDescription
-	}
-
 	var createTime time.Time
 	if item.Created != "" {
 		var err error
@@ -164,50 +149,29 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 		}
 	}
 
-	return &Event{
-		ID:           item.Id,
-		Summary:      strings.TrimSpace(item.Summary),
-		Description:  strings.TrimSpace(item.Description),
-		StartTime:    start,
-		EndTime:      end,
-		FullDayEvent: item.Start.DateTime == "" && item.Start.Date != "",
-		CalendarID:   calid,
-		Data:         data,
-		CreateTime:   createTime,
-	}, nil
-}
+	var ca *calendarv1.CustomerAnnotation
+	if item.ExtendedProperties != nil && len(item.ExtendedProperties.Shared) > 0 {
+		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.CustomerAnnoation"]; ok {
+			ca = new(calendarv1.CustomerAnnotation)
 
-func parseDescription(desc string) (string, *StructuredEvent, error) {
-	allLines := strings.Split(desc, "\n")
-	var (
-		sectionLines      []string
-		strippedDescr     string
-		foundSectionStart bool
-	)
-	for idx, line := range allLines {
-		line := strings.TrimSpace(line)
-		if line == "[CIS]" {
-			foundSectionStart = true
-			sectionLines = allLines[idx+1:]
-			strippedDescr = strings.TrimSpace(strings.Join(allLines[:idx], "\n"))
-
-			break
+			if err := protojson.Unmarshal([]byte(value), ca); err != nil {
+				slog.Error("failed to unmarshal customer annoation", "error", err)
+				ca = nil
+			}
 		}
 	}
-	if !foundSectionStart {
-		return desc, nil, nil
-	}
 
-	reader := strings.NewReader(strings.Join(sectionLines, "\n"))
-
-	dec := json.NewDecoder(reader)
-
-	var data StructuredEvent
-	if err := dec.Decode(&data); err != nil {
-		return "", nil, err
-	}
-
-	return strippedDescr, &data, nil
+	return &Event{
+		ID:                 item.Id,
+		Summary:            strings.TrimSpace(item.Summary),
+		Description:        strings.TrimSpace(item.Description),
+		StartTime:          start,
+		EndTime:            end,
+		FullDayEvent:       item.Start.DateTime == "" && item.Start.Date != "",
+		CalendarID:         calid,
+		CreateTime:         createTime,
+		CustomerAnnotation: ca,
+	}, nil
 }
 
 func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
@@ -219,15 +183,8 @@ func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
 		endTime = timestamppb.New(*model.EndTime)
 	}
 
-	if model.Data != nil {
-		extra := &calendarv1.CustomerAnnotation{
-			CustomerSource:  model.Data.CustomerSource,
-			CustomerId:      model.Data.CustomerID,
-			AnimalIds:       model.Data.AnimalID,
-			CreatedByUserId: model.Data.CreatedBy,
-		}
-
-		any, err = anypb.New(extra)
+	if model.CustomerAnnotation != nil {
+		any, err = anypb.New(model.CustomerAnnotation)
 		if err != nil {
 			return nil, err
 		}

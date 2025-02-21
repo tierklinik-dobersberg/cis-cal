@@ -457,13 +457,13 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 	if extra := req.Msg.ExtraData; extra != nil {
 		var err error
 
-		m.Data, err = svc.convertExtraData(ctx, extra)
+		m.CustomerAnnotation, err = svc.convertExtraData(ctx, extra)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	newEvent, err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Data)
+	newEvent, err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.CustomerAnnotation)
 	if err != nil {
 		return nil, err
 	}
@@ -478,24 +478,23 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 	}), nil
 }
 
-func (svc *CalendarService) convertExtraData(_ context.Context, extra *anypb.Any) (*repo.StructuredEvent, error) {
-	switch extra.TypeUrl {
-	case (string(new(calendarv1.CustomerAnnotation).ProtoReflect().Descriptor().FullName())):
-		var msg calendarv1.CustomerAnnotation
+func (svc *CalendarService) convertExtraData(_ context.Context, extra *anypb.Any) (*calendarv1.CustomerAnnotation, error) {
+	name := extra.TypeUrl
+	if strings.Contains(name, "googleapis") {
+		_, name, _ = strings.Cut(name, "/")
+	}
 
-		if err := extra.UnmarshalTo(&msg); err != nil {
+	switch name {
+	case (string(new(calendarv1.CustomerAnnotation).ProtoReflect().Descriptor().FullName())):
+		msg := new(calendarv1.CustomerAnnotation)
+
+		if err := extra.UnmarshalTo(msg); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
 
-		return &repo.StructuredEvent{
-			CustomerSource: msg.CustomerSource,
-			CustomerID:     msg.CustomerId,
-			AnimalID:       msg.AnimalIds,
-			CreatedBy:      msg.CreatedByUserId,
-		}, nil
-
+		return msg, nil
 	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupport data for ExtraData"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupport data for ExtraData: %s", extra.TypeUrl))
 	}
 }
 
@@ -560,11 +559,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 			}
 
 		case "extra_data":
-			if extra := msg.ExtraData; extra != nil {
-				evt.Data, err = svc.convertExtraData(ctx, msg.ExtraData)
-			} else {
-				evt.Data = nil
-			}
+			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("updating event.extra_data is not yet supported"))
 
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid update_mask path %q", p))

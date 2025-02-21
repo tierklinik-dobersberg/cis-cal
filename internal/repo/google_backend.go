@@ -16,6 +16,7 @@ import (
 
 	"github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
+	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/config"
@@ -28,6 +29,7 @@ import (
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type SearchOption func(*EventSearchOptions)
@@ -38,7 +40,7 @@ type Service interface {
 	ListCalendars(ctx context.Context) ([]Calendar, error)
 	ListEvents(ctx context.Context, calendarID string, filter ...SearchOption) ([]Event, error)
 	LoadEvent(ctx context.Context, calendarID string, eventID string, ignoreCache bool) (*Event, error)
-	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) (*Event, error)
+	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *calendarv1.CustomerAnnotation) (*Event, error)
 	DeleteEvent(ctx context.Context, calID, eventID string) error
 	MoveEvent(ctx context.Context, originCalendarId, eventId, targetCalendarId string) (event *Event, err error)
 	UpdateEvent(ctx context.Context, event Event) (*Event, error)
@@ -162,7 +164,7 @@ func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID str
 	return svc.loadEvents(ctx, calendarID, opts, cache)
 }
 
-func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *StructuredEvent) (*Event, error) {
+func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *calendarv1.CustomerAnnotation) (*Event, error) {
 	ctx, sp := otel.Tracer("").Start(ctx, "google.backend#CreateEvent")
 	defer sp.End()
 
@@ -187,6 +189,18 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 		description = strings.TrimSpace(description) + "\n\n[CIS]\n" + buf.String()
 	}
 
+	var props map[string]string
+	if data != nil {
+		jsonBlob, err := protojson.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal customer annoations", "error", err)
+		} else {
+			props = map[string]string{
+				"tkd.calendar.v1.CustomerAnnotation": string(jsonBlob),
+			}
+		}
+	}
+
 	res, err := svc.Service.Events.Insert(calID, &calendar.Event{
 		Summary:     name,
 		Description: description,
@@ -197,6 +211,9 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 			DateTime: startTime.Add(duration).Format(time.RFC3339),
 		},
 		Status: "confirmed",
+		ExtendedProperties: &calendar.EventExtendedProperties{
+			Shared: props,
+		},
 	}).Context(ctx).Do()
 	if err != nil {
 		trace.RecordAndLog(ctx, err)
