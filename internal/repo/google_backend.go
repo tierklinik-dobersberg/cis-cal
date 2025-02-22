@@ -176,13 +176,17 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 
 	var props map[string]string
 	if data != nil {
+		props = make(map[string]string, 2)
+
+		if data.CustomerId != "" {
+			props["tkd.calendar.v1.customerId"] = data.CustomerId
+		}
+
 		jsonBlob, err := protojson.Marshal(data)
 		if err != nil {
 			slog.Error("failed to marshal customer annoations", "error", err)
 		} else {
-			props = map[string]string{
-				"tkd.calendar.v1.CustomerAnnotation": string(jsonBlob),
-			}
+			props["tkd.calendar.v1.CustomerAnnotation"] = string(jsonBlob)
 		}
 	}
 
