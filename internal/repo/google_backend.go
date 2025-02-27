@@ -38,7 +38,7 @@ type Service interface {
 	ListCalendars(ctx context.Context) ([]Calendar, error)
 	ListEvents(ctx context.Context, calendarID string, filter ...SearchOption) ([]Event, error)
 	LoadEvent(ctx context.Context, calendarID string, eventID string, ignoreCache bool) (*Event, error)
-	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *calendarv1.CustomerAnnotation) (*Event, error)
+	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, resources []string, data *calendarv1.CustomerAnnotation) (*Event, error)
 	DeleteEvent(ctx context.Context, calID, eventID string) error
 	MoveEvent(ctx context.Context, originCalendarId, eventId, targetCalendarId string) (event *Event, err error)
 	UpdateEvent(ctx context.Context, event Event) (*Event, error)
@@ -162,22 +162,9 @@ func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID str
 	return svc.loadEvents(ctx, calendarID, opts, cache)
 }
 
-func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, data *calendarv1.CustomerAnnotation) (*Event, error) {
-	ctx, sp := otel.Tracer("").Start(ctx, "google.backend#CreateEvent")
-	defer sp.End()
-
-	sp.SetAttributes(
-		attribute.String("calendar.id", calID),
-		attribute.String("calendar.name", name),
-		attribute.String("calendar.description", description),
-		attribute.String("calendar.start_time", startTime.String()),
-		attribute.String("calendar.duration", duration.String()),
-	)
-
-	var props map[string]string
+func getExtendedProps(resources []string, data *calendarv1.CustomerAnnotation) map[string]string {
+	props := make(map[string]string, 2)
 	if data != nil {
-		props = make(map[string]string, 2)
-
 		if data.CustomerId != "" {
 			props["tkd.calendar.v1.customerId"] = data.CustomerId
 		}
@@ -190,6 +177,30 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 		}
 	}
 
+	if len(resources) > 0 {
+		jsonBlob, err := json.Marshal(resources)
+		if err != nil {
+			slog.Error("failed to marshal resource-name annoations", "error", err)
+		} else {
+			props["tkd.calendar.v1.ResourceNames"] = string(jsonBlob)
+		}
+	}
+
+	return props
+}
+
+func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, resources []string, data *calendarv1.CustomerAnnotation) (*Event, error) {
+	ctx, sp := otel.Tracer("").Start(ctx, "google.backend#CreateEvent")
+	defer sp.End()
+
+	sp.SetAttributes(
+		attribute.String("calendar.id", calID),
+		attribute.String("calendar.name", name),
+		attribute.String("calendar.description", description),
+		attribute.String("calendar.start_time", startTime.String()),
+		attribute.String("calendar.duration", duration.String()),
+	)
+
 	res, err := svc.Service.Events.Insert(calID, &calendar.Event{
 		Summary:     name,
 		Description: description,
@@ -201,7 +212,7 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 		},
 		Status: "confirmed",
 		ExtendedProperties: &calendar.EventExtendedProperties{
-			Shared: props,
+			Shared: getExtendedProps(resources, data),
 		},
 	}).Context(ctx).Do()
 	if err != nil {
@@ -229,6 +240,9 @@ func (svc *googleCalendarBackend) UpdateEvent(ctx context.Context, event Event) 
 			DateTime: event.EndTime.Format(time.RFC3339),
 		},
 		Status: "confirmed",
+		ExtendedProperties: &calendar.EventExtendedProperties{
+			Shared: getExtendedProps(event.Resources, event.CustomerAnnotation),
+		},
 	}).Context(ctx).Do()
 
 	if err != nil {

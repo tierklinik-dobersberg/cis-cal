@@ -764,6 +764,8 @@ github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOf
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/tierklinik-dobersberg/apis v0.34.0 h1:kCZmSzqnDgUvQRSoPm0GO1DI7pfaivsiwYI7PdSrREM=
 github.com/tierklinik-dobersberg/apis v0.34.0/go.mod h1:gXuKcer0mMcGWw3DN9M05trUk3LenkcUkSO/pUGSqIA=
+github.com/tierklinik-dobersberg/apis v0.36.0 h1:gddvcWXfCizFL58f2sMSjEvC/ZEYlOS6f0HEWZLCHaE=
+github.com/tierklinik-dobersberg/apis v0.36.0/go.mod h1:gXuKcer0mMcGWw3DN9M05trUk3LenkcUkSO/pUGSqIA=
 github.com/tierklinik-dobersberg/cis v1.5.0 h1:wBpiDD/naoJIhNXWRP/FpUjm951Z3K6iLUvIScPO1v8=
 github.com/tierklinik-dobersberg/cis v1.5.0/go.mod h1:jOjQltGeHDxePGBCjEP28S5NeQ0q4J40UrloIR1NWBE=
 github.com/tierklinik-dobersberg/logger v0.4.0 h1:uD7lFkkTDeqOngjF7ybSUbuk6MFgwNSajwBAZJaEMVw=

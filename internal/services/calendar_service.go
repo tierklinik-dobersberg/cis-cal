@@ -438,6 +438,7 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		Summary:     req.Msg.Name,
 		Description: req.Msg.Description,
 		StartTime:   req.Msg.Start.AsTime(),
+		Resources:   req.Msg.Resources,
 	}
 
 	var duration time.Duration
@@ -464,7 +465,7 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	newEvent, err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.CustomerAnnotation)
+	newEvent, err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
 	if err != nil {
 		return nil, err
 	}
@@ -513,6 +514,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		"start",
 		"end",
 		"extra_data",
+		"resources",
 	}
 
 	if um := msg.GetUpdateMask().GetPaths(); len(um) > 0 {
@@ -561,6 +563,9 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 
 		case "extra_data":
 			return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("updating event.extra_data is not yet supported"))
+
+		case "resources":
+			evt.Resources = req.Msg.Resources
 
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid update_mask path %q", p))
