@@ -116,9 +116,14 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 		}
 
 		for _, r := range res {
+			display := r.DisplayName
+			if display == "" {
+				display = r.Name
+			}
+
 			response.Calendars = append(response.Calendars, &calendarv1.Calendar{
 				Id:                r.Name,
-				Name:              r.Name,
+				Name:              display,
 				Timezone:          time.Local.String(),
 				Color:             r.Color,
 				IsVirtualResource: true,
@@ -397,10 +402,15 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		for _, r := range res {
 			events := eventsByResource[r.Name]
 
+			display := r.DisplayName
+			if display == "" {
+				display = r.Name
+			}
+
 			response.Results = append(response.Results, &calendarv1.CalendarEventList{
 				Calendar: &calendarv1.Calendar{
 					Id:                r.Name,
-					Name:              r.Name,
+					Name:              display,
 					Color:             r.Color,
 					Timezone:          time.Local.String(),
 					IsVirtualResource: true,
