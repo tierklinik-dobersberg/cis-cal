@@ -24,6 +24,7 @@ import (
 	"github.com/tierklinik-dobersberg/cis-cal/internal/cache"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -382,7 +383,11 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			calendarEvents.Events[idx] = protoEvent
 
 			for _, r := range protoEvent.Resources {
-				eventsByResource[r] = append(eventsByResource[r], protoEvent)
+				cloned := proto.Clone(protoEvent).(*calendarv1.CalendarEvent)
+
+				cloned.VirtualCopy = true
+
+				eventsByResource[r] = append(eventsByResource[r], cloned)
 			}
 		}
 
