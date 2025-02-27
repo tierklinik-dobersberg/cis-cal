@@ -11,15 +11,17 @@ import (
 )
 
 type Config struct {
-	CredentialsFile  string   `json:"credentialsFile"`
-	TokenFile        string   `json:"tokenFile"`
-	IgnoreCalendars  []string `json:"ignoreCalendars"`
-	IdmURL           string   `json:"idmUrl"`
-	EventsServiceUrl string   `json:"eventsServiceUrl"`
-	AllowedOrigins   []string `json:"allowedOrigins"`
-	ListenAddress    string   `json:"listen"`
-	DefaultCountry   string   `json:"defaultCountry"`
-	FreeSlots        struct {
+	CredentialsFile   string   `json:"credentialsFile"`
+	TokenFile         string   `json:"tokenFile"`
+	IgnoreCalendars   []string `json:"ignoreCalendars"`
+	IdmURL            string   `json:"idmUrl"`
+	EventsServiceUrl  string   `json:"eventsServiceUrl"`
+	AllowedOrigins    []string `json:"allowedOrigins"`
+	ListenAddress     string   `json:"listen"`
+	DefaultCountry    string   `json:"defaultCountry"`
+	MongoURL          string   `json:"mongoURL"`
+	MongoDatabaseName string   `json:"database"`
+	FreeSlots         struct {
 		IgnoreShiftTags []string `json:"ignoreShiftTags"`
 		RosterTypeName  string   `json:"rosterTypeName"`
 	} `json:"freeSlots"`

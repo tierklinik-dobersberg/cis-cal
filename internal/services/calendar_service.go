@@ -25,6 +25,7 @@ import (
 	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -656,4 +657,33 @@ func extractCalendarId(ctx context.Context, profile *idmv1.Profile) string {
 	}
 
 	return ""
+}
+
+func (svc *CalendarService) StoreResourceCalendar(ctx context.Context, req *connect.Request[calendarv1.ResourceCalendar]) (*connect.Response[calendarv1.ResourceCalendar], error) {
+	m := req.Msg
+
+	if err := svc.repo.Resources.Store(ctx, m); err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(m), nil
+}
+
+func (svc *CalendarService) ListResourceCalendars(ctx context.Context, req *connect.Request[calendarv1.ListResourceCalendarsRequest]) (*connect.Response[calendarv1.ListResourceCalendarsResponse], error) {
+	pb, err := svc.repo.Resources.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&calendarv1.ListResourceCalendarsResponse{
+		ResourceCalendars: pb,
+	}), nil
+}
+
+func (svc *CalendarService) DeleteResourceCalendar(ctx context.Context, req *connect.Request[calendarv1.DeleteResourceCalendarRequest]) (*connect.Response[emptypb.Empty], error) {
+	if err := svc.repo.Resources.Delete(ctx, req.Msg.Name); err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&emptypb.Empty{}), nil
 }

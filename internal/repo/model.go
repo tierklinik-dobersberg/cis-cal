@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -36,6 +37,7 @@ type Event struct {
 	FullDayEvent bool
 	IsFree       bool
 	CreateTime   time.Time
+	Resources    []string
 
 	CustomerAnnotation *calendarv1.CustomerAnnotation
 }
@@ -150,6 +152,8 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 	}
 
 	var ca *calendarv1.CustomerAnnotation
+	var resources []string
+
 	if item.ExtendedProperties != nil && len(item.ExtendedProperties.Shared) > 0 {
 		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.CustomerAnnoation"]; ok {
 			ca = new(calendarv1.CustomerAnnotation)
@@ -159,12 +163,19 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 				ca = nil
 			}
 		}
+
+		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.ResourceNames"]; ok {
+			if err := json.Unmarshal([]byte(value), &resources); err != nil {
+				slog.Error("failed to unmarshal resource-name annoation", "error", err)
+			}
+		}
 	}
 
 	return &Event{
 		ID:                 item.Id,
 		Summary:            strings.TrimSpace(item.Summary),
 		Description:        strings.TrimSpace(item.Description),
+		Resources:          resources,
 		StartTime:          start,
 		EndTime:            end,
 		FullDayEvent:       item.Start.DateTime == "" && item.Start.Date != "",
@@ -207,6 +218,7 @@ func (model *Event) ToProto() (*calendarv1.CalendarEvent, error) {
 		Description: model.Description,
 		IsFree:      model.IsFree,
 		CreateTime:  createTime,
+		Resources:   model.Resources,
 	}, nil
 
 }
