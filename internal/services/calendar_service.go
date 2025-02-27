@@ -109,6 +109,23 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 		})
 	}
 
+	if req.Msg.IncludeVirtualResourceCalendars {
+		res, err := svc.repo.Resources.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, r := range res {
+			response.Calendars = append(response.Calendars, &calendarv1.Calendar{
+				Id:                r.Name,
+				Name:              r.Name,
+				Timezone:          time.Local.String(),
+				Color:             r.Color,
+				IsVirtualResource: true,
+			})
+		}
+	}
+
 	return connect.NewResponse(response), nil
 }
 
@@ -281,7 +298,9 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 	}
 
+	eventsByResource := make(map[string][]*calendarv1.CalendarEvent)
 	response := &calendarv1.ListEventsResponse{}
+
 	for _, calId := range calendarIdList {
 		var (
 			events []repo.Event
@@ -356,11 +375,38 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			}
 
 			calendarEvents.Events[idx] = protoEvent
+
+			for _, r := range protoEvent.Resources {
+				eventsByResource[r] = append(eventsByResource[r], protoEvent)
+			}
 		}
 
 		// do not add empty messages
 		if calendarEvents.Calendar != nil || len(calendarEvents.Events) > 0 {
 			response.Results = append(response.Results, calendarEvents)
+		}
+	}
+
+	// check if we should include virtual calendars
+	if slices.Contains(req.Msg.RequestKinds, calendarv1.CalenarEventRequestKind_CALENDAR_EVENT_REQUEST_KIND_VIRTUAL_RESOURCES) {
+		res, err := svc.repo.Resources.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, r := range res {
+			events := eventsByResource[r.Name]
+
+			response.Results = append(response.Results, &calendarv1.CalendarEventList{
+				Calendar: &calendarv1.Calendar{
+					Id:                r.Name,
+					Name:              r.Name,
+					Color:             r.Color,
+					Timezone:          time.Local.String(),
+					IsVirtualResource: true,
+				},
+				Events: events,
+			})
 		}
 	}
 
