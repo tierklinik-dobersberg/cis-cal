@@ -64,12 +64,12 @@ func (db *Database) setup(ctx context.Context) error {
 }
 
 func (db *Database) Store(ctx context.Context, r *calendarv1.ResourceCalendar) error {
-	_, err := db.col.InsertOne(ctx, ResourceCalendar{
+	_, err := db.col.ReplaceOne(ctx, bson.M{"name": r.Name}, ResourceCalendar{
 		Name:             r.Name,
 		DisplayName:      r.DisplayName,
 		Color:            r.Color,
 		MaxConcurrentUse: r.MaxConcurrentUse,
-	})
+	}, options.Replace().SetUpsert(true))
 
 	return err
 }
