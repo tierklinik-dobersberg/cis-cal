@@ -25,7 +25,7 @@ type App struct {
 	Resources *resources.Database
 	ICalRepo  *ical.Repository
 
-	repo.Service
+	Google repo.ReadWriter
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -59,7 +59,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	app := &App{
-		Service: service,
+		Google: service,
 
 		Config:    cfg,
 		Users:     idmv1connect.NewUserServiceClient(http.DefaultClient, cfg.IdmURL),

@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
@@ -315,7 +314,7 @@ func (svc *GoogleBackend) LoadEvent(ctx context.Context, calendarID, eventID str
 		if errors.As(err, &googleError) {
 			switch googleError.Code {
 			case http.StatusNotFound, http.StatusGone:
-				return nil, connect.NewError(connect.CodeNotFound, googleError)
+				return nil, repo.ErrNotFound
 			}
 		}
 

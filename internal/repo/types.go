@@ -10,20 +10,32 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var ErrInvalidEvent = errors.New("invalid event")
+var (
+	ErrInvalidEvent = errors.New("invalid event")
+	ErrNotFound     = errors.New("event not found")
+	ErrReadOnly     = errors.New("calendar is readonly")
+)
 
 type SearchOption func(*EventSearchOptions)
 
-// Service allows to read and manipulate google
-// calendar events.
-type Service interface {
+type Reader interface {
 	ListCalendars(ctx context.Context) ([]*calendarv1.Calendar, error)
 	ListEvents(ctx context.Context, calendarID string, filter ...SearchOption) ([]Event, error)
 	LoadEvent(ctx context.Context, calendarID string, eventID string, ignoreCache bool) (*Event, error)
+}
+
+type Writer interface {
 	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, resources []string, data *calendarv1.CustomerAnnotation) (*Event, error)
 	DeleteEvent(ctx context.Context, calID, eventID string) error
 	MoveEvent(ctx context.Context, originCalendarId, eventId, targetCalendarId string) (event *Event, err error)
 	UpdateEvent(ctx context.Context, event Event) (*Event, error)
+}
+
+// ReadWriter allows to read and manipulate google
+// calendar events.
+type ReadWriter interface {
+	Reader
+	Writer
 }
 
 type Calendar struct {

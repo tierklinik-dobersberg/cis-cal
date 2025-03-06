@@ -67,7 +67,7 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 
 	// create a new calendar cache
 	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[*calendarv1.Calendar](func(ctx context.Context) ([]*calendarv1.Calendar, error) {
-		googleCalendars, err := svc.Service.ListCalendars(ctx)
+		googleCalendars, err := svc.Google.ListCalendars(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +323,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		)
 
 		if mustLoadEvents || freeSlots {
-			events, err = svc.repo.ListEvents(ctx, calId, opts...)
+			events, err = svc.repo.Google.ListEvents(ctx, calId, opts...)
 			if err != nil {
 				return nil, err
 			}
@@ -540,7 +540,7 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	newEvent, err := svc.repo.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
+	newEvent, err := svc.repo.Google.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +587,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("calendar is read-only"))
 	}
 
-	evt, err := svc.repo.LoadEvent(ctx, msg.CalendarId, msg.EventId, true)
+	evt, err := svc.repo.Google.LoadEvent(ctx, msg.CalendarId, msg.EventId, true)
 	if err != nil {
 		return nil, err
 	}
@@ -656,7 +656,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	updatedEvent, err := svc.repo.UpdateEvent(ctx, *evt)
+	updatedEvent, err := svc.repo.Google.UpdateEvent(ctx, *evt)
 	if err != nil {
 		return nil, err
 	}
@@ -707,7 +707,7 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("target calendar is read-only"))
 	}
 
-	event, err := svc.repo.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
+	event, err := svc.repo.Google.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
 	if err != nil {
 		return nil, err
 	}
@@ -745,7 +745,7 @@ func (svc *CalendarService) DeleteEvent(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("calendar is read-only"))
 	}
 
-	if err := svc.repo.DeleteEvent(ctx, req.Msg.CalendarId, req.Msg.EventId); err != nil {
+	if err := svc.repo.Google.DeleteEvent(ctx, req.Msg.CalendarId, req.Msg.EventId); err != nil {
 		return nil, err
 	}
 
