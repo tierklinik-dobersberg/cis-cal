@@ -10,7 +10,6 @@ import (
 	"time"
 
 	ical "github.com/arran4/golang-ical"
-	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/config"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
 )
@@ -186,24 +185,45 @@ func (r *Repository) GetEvents() map[string][]repo.Event {
 	return maps.Clone(r.events)
 }
 
-func (r *Repository) ListCalendars(ctx context.Context) ([]*calendarv1.Calendar, error) {
+func (r *Repository) ListCalendars(ctx context.Context) ([]repo.Calendar, error) {
 	cals := r.GetCalendars()
 
-	result := make([]*calendarv1.Calendar, len(cals))
+	result := make([]repo.Calendar, len(cals))
 
 	for idx, c := range cals {
 		if c.Hidden {
 			continue
 		}
 
-		result[idx] = &calendarv1.Calendar{
-			Id:       c.Name,
+		result[idx] = repo.Calendar{
+			ID:       c.Name,
 			Name:     c.Name,
 			Timezone: time.Local.String(),
 			Color:    c.Color,
 			Readonly: true,
+			Reader:   r,
 		}
 	}
 
 	return result, nil
+}
+
+func (r *Repository) ListEvents(ctx context.Context, calId string, opts ...repo.SearchOption) ([]repo.Event, error) {
+	r.eventsLock.RLock()
+	defer r.eventsLock.RUnlock()
+
+	return slices.Clone(r.events[calId]), nil
+}
+
+func (r *Repository) LoadEvent(ctx context.Context, calId string, eventId string, _ bool) (*repo.Event, error) {
+	r.eventsLock.RLock()
+	defer r.eventsLock.RUnlock()
+
+	for _, e := range r.events[calId] {
+		if e.ID == eventId {
+			return &e, nil
+		}
+	}
+
+	return nil, repo.ErrNotFound
 }

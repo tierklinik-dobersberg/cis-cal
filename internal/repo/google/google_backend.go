@@ -93,24 +93,25 @@ func Authenticate(cfg config.Config) error {
 	return nil
 }
 
-func (svc *GoogleBackend) ListCalendars(ctx context.Context) ([]*calendarv1.Calendar, error) {
+func (svc *GoogleBackend) ListCalendars(ctx context.Context) ([]repo.Calendar, error) {
 	res, err := svc.Service.CalendarList.List().ShowHidden(true).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve list of calendars: %w", err)
 	}
 
-	var list = make([]*calendarv1.Calendar, 0, len(res.Items))
+	var list = make([]repo.Calendar, 0, len(res.Items))
 	for _, item := range res.Items {
 		// check if the calendar should be ingored based on IngoreCalendar=
 		if svc.shouldIngore(item) {
 			continue
 		}
 
-		list = append(list, &calendarv1.Calendar{
-			Id:       item.Id,
+		list = append(list, repo.Calendar{
+			ID:       item.Id,
 			Name:     item.Summary,
 			Timezone: item.TimeZone,
 			Color:    item.BackgroundColor,
+			Reader:   svc,
 		})
 
 		// immediately prepare the calendar cache

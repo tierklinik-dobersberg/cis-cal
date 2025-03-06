@@ -19,7 +19,7 @@ var (
 type SearchOption func(*EventSearchOptions)
 
 type Reader interface {
-	ListCalendars(ctx context.Context) ([]*calendarv1.Calendar, error)
+	ListCalendars(ctx context.Context) ([]Calendar, error)
 	ListEvents(ctx context.Context, calendarID string, filter ...SearchOption) ([]Event, error)
 	LoadEvent(ctx context.Context, calendarID string, eventID string, ignoreCache bool) (*Event, error)
 }
@@ -42,8 +42,32 @@ type Calendar struct {
 	ID       string
 	Name     string
 	Timezone string
-	Location *time.Location
 	Color    string
+	Readonly bool
+
+	Reader
+}
+
+func (c *Calendar) Writer() (Writer, error) {
+	if c.Readonly {
+		return nil, ErrReadOnly
+	}
+
+	if w, ok := c.Reader.(Writer); ok {
+		return w, nil
+	}
+
+	return nil, ErrReadOnly
+}
+
+func (c Calendar) ToProto() *calendarv1.Calendar {
+	return &calendarv1.Calendar{
+		Id:       c.ID,
+		Name:     c.Name,
+		Timezone: c.Timezone,
+		Color:    c.Color,
+		Readonly: c.Readonly,
+	}
 }
 
 type Event struct {

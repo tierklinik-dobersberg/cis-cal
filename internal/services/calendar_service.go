@@ -35,14 +35,13 @@ type CalendarService struct {
 	calendarv1connect.UnimplementedCalendarServiceHandler
 
 	// User cache and various indexes.
-
 	users       *cache.Cache[*idmv1.Profile]
 	byUserId    *cache.Index[string, *idmv1.Profile]
 	userByCalId *cache.Index[string, *idmv1.Profile]
 
 	// Calendar cache and various indexes.
-	calendars    *cache.Cache[*calendarv1.Calendar]
-	calendarById *cache.Index[string, *calendarv1.Calendar]
+	calendars    *cache.Cache[repo.Calendar]
+	calendarById *cache.Index[string, repo.Calendar]
 
 	repo *app.App
 }
@@ -66,19 +65,7 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 	profileCache.Start(ctx)
 
 	// create a new calendar cache
-	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[*calendarv1.Calendar](func(ctx context.Context) ([]*calendarv1.Calendar, error) {
-		googleCalendars, err := svc.Google.ListCalendars(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		ical, err := svc.ICalRepo.ListCalendars(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		return append(googleCalendars, ical...), nil
-	}))
+	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[repo.Calendar](svc.Google.ListCalendars))
 
 	calendarCache.Start(ctx)
 
@@ -95,8 +82,8 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 		}),
 
 		calendars: calendarCache,
-		calendarById: cache.CreateIndex(calendarCache, func(c *calendarv1.Calendar) (string, bool) {
-			return c.Id, true
+		calendarById: cache.CreateIndex(calendarCache, func(c repo.Calendar) (string, bool) {
+			return c.ID, true
 		}),
 	}
 
@@ -110,13 +97,14 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 
 	for _, cal := range res {
 		var userId string
-		if user, ok := svc.userByCalId.Get(cal.Id); ok {
+		if user, ok := svc.userByCalId.Get(cal.ID); ok {
 			userId = user.User.Id
 		}
 
-		cal.UserId = userId
+		protoCal := cal.ToProto()
+		protoCal.UserId = userId
 
-		response.Calendars = append(response.Calendars, cal)
+		response.Calendars = append(response.Calendars, protoCal)
 	}
 
 	if req.Msg.IncludeVirtualResourceCalendars {
@@ -139,6 +127,16 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 				IsVirtualResource: true,
 			})
 		}
+	}
+
+	// load and append ical calendars
+	ical, err := svc.repo.ICalRepo.ListCalendars(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, c := range ical {
+		response.Calendars = append(response.Calendars, c.ToProto())
 	}
 
 	return connect.NewResponse(response), nil
@@ -258,7 +256,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 		case *calendarv1.ListEventsRequest_AllCalendars:
 			for _, cal := range allCalendars {
-				calendarIds[cal.Id] = struct{}{}
+				calendarIds[cal.ID] = struct{}{}
 			}
 
 		case *calendarv1.ListEventsRequest_AllUsers:
@@ -322,8 +320,13 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			err    error
 		)
 
+		cal, ok := svc.calendarById.Get(calId)
+		if !ok {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("failed to get calendar with id %q", calId))
+		}
+
 		if mustLoadEvents || freeSlots {
-			events, err = svc.repo.Google.ListEvents(ctx, calId, opts...)
+			events, err = cal.ListEvents(ctx, calId, opts...)
 			if err != nil {
 				return nil, err
 			}
@@ -374,9 +377,10 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 				userId = user.User.Id
 			}
 
-			cal.UserId = userId
+			protoCal := cal.ToProto()
+			protoCal.UserId = userId
 
-			calendarEvents.Calendar = cal
+			calendarEvents.Calendar = protoCal
 		}
 
 		for idx, e := range events {
@@ -540,7 +544,12 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	newEvent, err := svc.repo.Google.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
+	w, err := cal.Writer()
+	if err != nil {
+		return nil, err
+	}
+
+	newEvent, err := w.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
 	if err != nil {
 		return nil, err
 	}
@@ -656,7 +665,12 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	updatedEvent, err := svc.repo.Google.UpdateEvent(ctx, *evt)
+	w, err := cal.Writer()
+	if err != nil {
+		return nil, err
+	}
+
+	updatedEvent, err := w.UpdateEvent(ctx, *evt)
 	if err != nil {
 		return nil, err
 	}
@@ -707,7 +721,12 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("target calendar is read-only"))
 	}
 
-	event, err := svc.repo.Google.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
+	w, err := cal.Writer()
+	if err != nil {
+		return nil, err
+	}
+
+	event, err := w.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
 	if err != nil {
 		return nil, err
 	}
@@ -742,10 +761,15 @@ func (svc *CalendarService) DeleteEvent(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid calendar id"))
 	}
 	if cal.Readonly {
-		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("calendar is read-only"))
+		return nil, connect.NewError(connect.CodePermissionDenied, repo.ErrReadOnly)
 	}
 
-	if err := svc.repo.Google.DeleteEvent(ctx, req.Msg.CalendarId, req.Msg.EventId); err != nil {
+	w, err := cal.Writer()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := w.DeleteEvent(ctx, req.Msg.CalendarId, req.Msg.EventId); err != nil {
 		return nil, err
 	}
 
