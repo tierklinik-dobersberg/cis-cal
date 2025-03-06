@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
@@ -44,6 +45,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		if err := icalRepo.Add(cfg); err != nil {
 			return nil, fmt.Errorf("failed to add ical calendar to repository: %w", err)
 		}
+
+		slog.Info("added iCal calendar resource", "name", cfg.Name)
 	}
 
 	// prepare the resource database
