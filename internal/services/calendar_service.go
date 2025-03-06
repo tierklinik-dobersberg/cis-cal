@@ -329,7 +329,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 
 		if mustLoadEvents || freeSlots {
-			events, err = cal.ListEvents(ctx, calId, opts...)
+			events, err = cal.ListEvents(ctx, opts...)
 			if err != nil {
 				return nil, err
 			}
@@ -547,12 +547,7 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	w, err := cal.Writer()
-	if err != nil {
-		return nil, err
-	}
-
-	newEvent, err := w.CreateEvent(ctx, m.CalendarID, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
+	newEvent, err := cal.CreateEvent(ctx, m.Summary, m.Description, m.StartTime, duration, m.Resources, m.CustomerAnnotation)
 	if err != nil {
 		return nil, err
 	}
@@ -668,12 +663,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		}
 	}
 
-	w, err := cal.Writer()
-	if err != nil {
-		return nil, err
-	}
-
-	updatedEvent, err := w.UpdateEvent(ctx, *evt)
+	updatedEvent, err := cal.UpdateEvent(ctx, *evt)
 	if err != nil {
 		return nil, err
 	}
@@ -716,20 +706,15 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 	}
 
 	// validate the target calendar
-	cal, ok = svc.calendarById.Get(targetCalendarID)
+	target, ok := svc.calendarById.Get(targetCalendarID)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid target calendar id"))
 	}
-	if cal.Readonly {
+	if target.Readonly {
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("target calendar is read-only"))
 	}
 
-	w, err := cal.Writer()
-	if err != nil {
-		return nil, err
-	}
-
-	event, err := w.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
+	event, err := cal.MoveEvent(ctx, req.Msg.EventId, targetCalendarID)
 	if err != nil {
 		return nil, err
 	}
@@ -767,12 +752,7 @@ func (svc *CalendarService) DeleteEvent(ctx context.Context, req *connect.Reques
 		return nil, connect.NewError(connect.CodePermissionDenied, repo.ErrReadOnly)
 	}
 
-	w, err := cal.Writer()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := w.DeleteEvent(ctx, req.Msg.CalendarId, req.Msg.EventId); err != nil {
+	if err := cal.DeleteEvent(ctx, req.Msg.EventId); err != nil {
 		return nil, err
 	}
 
