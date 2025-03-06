@@ -355,29 +355,14 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *repo.E
 	var res []repo.Event
 
 	for _, evt := range ec.events {
-		matches := false
+		matches := repo.EventMatches(evt, search)
 
-		// for the lower bound, ensure the event either ends after the it or, if there's no end time, start after it.
-		if evt.EndTime != nil {
-			matches = evt.EndTime.After(*search.FromTime)
-		} else {
-			matches = evt.StartTime.After(*search.FromTime)
-		}
-
-		// if we have an upper bound, ensure the event starts before that
-		if search.ToTime != nil && evt.StartTime.After(*search.ToTime) {
-			matches = false
-		}
-
-		if matches {
-			if search.EventID != nil {
-				if evt.ID == *search.EventID {
-					ec.log.Debug("found event in cache", "event-id", *search.EventID)
-					return []repo.Event{evt}, true
-				}
-			} else {
-				res = append(res, evt)
-			}
+		switch {
+		case matches && search.EventID != nil:
+			ec.log.Debug("found event in cache", "event-id", *search.EventID)
+			return []repo.Event{evt}, true
+		case matches:
+			res = append(res, evt)
 		}
 	}
 

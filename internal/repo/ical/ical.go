@@ -214,7 +214,24 @@ func (r *Repository) ListEvents(ctx context.Context, calId string, opts ...repo.
 	r.eventsLock.RLock()
 	defer r.eventsLock.RUnlock()
 
-	return slices.Clone(r.events[calId]), nil
+	all := slices.Clone(r.events[calId])
+
+	events := make([]repo.Event, 0, len(all))
+
+	search := new(repo.EventSearchOptions)
+	for _, o := range opts {
+		o(search)
+	}
+
+	for _, evt := range all {
+		if !repo.EventMatches(evt, search) {
+			continue
+		}
+
+		events = append(events, evt)
+	}
+
+	return events, nil
 }
 
 func (r *Repository) LoadEvent(ctx context.Context, calId string, eventId string, _ bool) (*repo.Event, error) {
