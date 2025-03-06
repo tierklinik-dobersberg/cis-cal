@@ -1,4 +1,4 @@
-package repo
+package google
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 	"github.com/tierklinik-dobersberg/cis-cal/internal/config"
+	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
 	"github.com/tierklinik-dobersberg/cis/pkg/trace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -30,21 +31,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-type SearchOption func(*EventSearchOptions)
-
-// Service allows to read and manipulate google
-// calendar events.
-type Service interface {
-	ListCalendars(ctx context.Context) ([]Calendar, error)
-	ListEvents(ctx context.Context, calendarID string, filter ...SearchOption) ([]Event, error)
-	LoadEvent(ctx context.Context, calendarID string, eventID string, ignoreCache bool) (*Event, error)
-	CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, resources []string, data *calendarv1.CustomerAnnotation) (*Event, error)
-	DeleteEvent(ctx context.Context, calID, eventID string) error
-	MoveEvent(ctx context.Context, originCalendarId, eventId, targetCalendarId string) (event *Event, err error)
-	UpdateEvent(ctx context.Context, event Event) (*Event, error)
-}
-
-type googleCalendarBackend struct {
+type GoogleBackend struct {
 	*calendar.Service
 
 	EventsClient    eventsv1connect.EventServiceClient
@@ -56,7 +43,7 @@ type googleCalendarBackend struct {
 }
 
 // New creates a new calendar service from cfg.
-func New(ctx context.Context, cfg config.Config) (Service, error) {
+func New(ctx context.Context, cfg config.Config) (*GoogleBackend, error) {
 	creds, err := credsFromFile(cfg.CredentialsFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read credentials file %s: %w", cfg.CredentialsFile, err)
@@ -73,7 +60,7 @@ func New(ctx context.Context, cfg config.Config) (Service, error) {
 		return nil, fmt.Errorf("failed to create calendar client: %w", err)
 	}
 
-	svc := &googleCalendarBackend{
+	svc := &GoogleBackend{
 		Service:         calSvc,
 		eventsCache:     make(map[string]*googleEventCache),
 		ignoreCalendars: cfg.IgnoreCalendars,
@@ -107,29 +94,23 @@ func Authenticate(cfg config.Config) error {
 	return nil
 }
 
-func (svc *googleCalendarBackend) ListCalendars(ctx context.Context) ([]Calendar, error) {
+func (svc *GoogleBackend) ListCalendars(ctx context.Context) ([]*calendarv1.Calendar, error) {
 	res, err := svc.Service.CalendarList.List().ShowHidden(true).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve list of calendars: %w", err)
 	}
 
-	var list = make([]Calendar, 0, len(res.Items))
+	var list = make([]*calendarv1.Calendar, 0, len(res.Items))
 	for _, item := range res.Items {
-		loc, err := time.LoadLocation(item.TimeZone)
-		if err != nil {
-			slog.Error("failed to parse timezone from calendar", "time-zone", item.TimeZone, "calendar-id", item.Id)
-		}
-
 		// check if the calendar should be ingored based on IngoreCalendar=
 		if svc.shouldIngore(item) {
 			continue
 		}
 
-		list = append(list, Calendar{
-			ID:       item.Id,
+		list = append(list, &calendarv1.Calendar{
+			Id:       item.Id,
 			Name:     item.Summary,
 			Timezone: item.TimeZone,
-			Location: loc,
 			Color:    item.BackgroundColor,
 		})
 
@@ -142,8 +123,8 @@ func (svc *googleCalendarBackend) ListCalendars(ctx context.Context) ([]Calendar
 	return list, nil
 }
 
-func (svc *googleCalendarBackend) ListEvents(ctx context.Context, calendarID string, searchOpts ...SearchOption) ([]Event, error) {
-	opts := new(EventSearchOptions)
+func (svc *GoogleBackend) ListEvents(ctx context.Context, calendarID string, searchOpts ...repo.SearchOption) ([]repo.Event, error) {
+	opts := new(repo.EventSearchOptions)
 
 	for _, fn := range searchOpts {
 		fn(opts)
@@ -189,7 +170,7 @@ func getExtendedProps(resources []string, data *calendarv1.CustomerAnnotation) m
 	return props
 }
 
-func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, resources []string, data *calendarv1.CustomerAnnotation) (*Event, error) {
+func (svc *GoogleBackend) CreateEvent(ctx context.Context, calID, name, description string, startTime time.Time, duration time.Duration, resources []string, data *calendarv1.CustomerAnnotation) (*repo.Event, error) {
 	ctx, sp := otel.Tracer("").Start(ctx, "google.backend#CreateEvent")
 	defer sp.End()
 
@@ -229,7 +210,7 @@ func (svc *googleCalendarBackend) CreateEvent(ctx context.Context, calID, name, 
 	return googleEventToModel(ctx, calID, res)
 }
 
-func (svc *googleCalendarBackend) UpdateEvent(ctx context.Context, event Event) (*Event, error) {
+func (svc *GoogleBackend) UpdateEvent(ctx context.Context, event repo.Event) (*repo.Event, error) {
 	evt, err := svc.Service.Events.Update(event.CalendarID, event.ID, &calendar.Event{
 		Summary:     event.Summary,
 		Description: event.Description,
@@ -258,7 +239,7 @@ func (svc *googleCalendarBackend) UpdateEvent(ctx context.Context, event Event) 
 	return googleEventToModel(ctx, event.CalendarID, evt)
 }
 
-func (svc *googleCalendarBackend) MoveEvent(ctx context.Context, originCalendarId string, eventId string, targetCalendarId string) (*Event, error) {
+func (svc *GoogleBackend) MoveEvent(ctx context.Context, originCalendarId string, eventId string, targetCalendarId string) (*repo.Event, error) {
 	result, err := svc.Service.Events.Move(originCalendarId, eventId, targetCalendarId).Context(ctx).Do()
 	if err != nil {
 		return nil, err
@@ -279,7 +260,7 @@ func (svc *googleCalendarBackend) MoveEvent(ctx context.Context, originCalendarI
 	return googleEventToModel(ctx, targetCalendarId, result)
 }
 
-func (svc *googleCalendarBackend) DeleteEvent(ctx context.Context, calID, eventID string) error {
+func (svc *GoogleBackend) DeleteEvent(ctx context.Context, calID, eventID string) error {
 	err := svc.Service.Events.Delete(calID, eventID).Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("failed to delete event upstream: %w", err)
@@ -293,7 +274,7 @@ func (svc *googleCalendarBackend) DeleteEvent(ctx context.Context, calID, eventI
 	return nil
 }
 
-func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*googleEventCache, error) {
+func (svc *GoogleBackend) cacheFor(ctx context.Context, calID string) (*googleEventCache, error) {
 	svc.cacheLock.Lock()
 	defer svc.cacheLock.Unlock()
 
@@ -315,8 +296,8 @@ func (svc *googleCalendarBackend) cacheFor(ctx context.Context, calID string) (*
 	return cache, nil
 }
 
-func (svc *googleCalendarBackend) LoadEvent(ctx context.Context, calendarID, eventID string, ignoreCache bool) (*Event, error) {
-	opts := &EventSearchOptions{
+func (svc *GoogleBackend) LoadEvent(ctx context.Context, calendarID, eventID string, ignoreCache bool) (*repo.Event, error) {
+	opts := &repo.EventSearchOptions{
 		EventID: &eventID,
 	}
 	if !ignoreCache {
@@ -345,7 +326,7 @@ func (svc *googleCalendarBackend) LoadEvent(ctx context.Context, calendarID, eve
 }
 
 // trunk-ignore(golangci-lint/cyclop)
-func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID string, searchOpts *EventSearchOptions, cache *googleEventCache) ([]Event, error) {
+func (svc *GoogleBackend) loadEvents(ctx context.Context, calendarID string, searchOpts *repo.EventSearchOptions, cache *googleEventCache) ([]repo.Event, error) {
 	call := svc.Events.List(calendarID).ShowDeleted(false).SingleEvents(true)
 
 	key := calendarID
@@ -370,7 +351,7 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 	}
 
 	res, err, _ := svc.loadGroup.Do(key, func() (interface{}, error) {
-		var events []Event
+		var events []repo.Event
 		var pageToken string
 		for {
 			if pageToken != "" {
@@ -394,7 +375,7 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 				// exit early
 				if searchOpts.EventID != nil {
 					if evt.ID == *searchOpts.EventID {
-						return []Event{*evt}, nil
+						return []repo.Event{*evt}, nil
 					}
 				} else {
 					events = append(events, *evt)
@@ -427,7 +408,7 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 	// time we return the result immediately from the fetched result.
 	if searchOpts == nil || searchOpts.EventID != nil || searchOpts.FromTime == nil {
 		// trunk-ignore(golangci-lint/forcetypeassert)
-		return res.([]Event), nil
+		return res.([]repo.Event), nil
 	}
 
 	// otherwise, the result should have been appended to the cache so it's now save
@@ -440,7 +421,7 @@ func (svc *googleCalendarBackend) loadEvents(ctx context.Context, calendarID str
 	return result, nil
 }
 
-func (svc *googleCalendarBackend) shouldIngore(item *calendar.CalendarListEntry) bool {
+func (svc *GoogleBackend) shouldIngore(item *calendar.CalendarListEntry) bool {
 	return slices.Contains(svc.ignoreCalendars, item.Id)
 }
 

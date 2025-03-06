@@ -41,8 +41,8 @@ type CalendarService struct {
 	userByCalId *cache.Index[string, *idmv1.Profile]
 
 	// Calendar cache and various indexes.
-	calendars    *cache.Cache[repo.Calendar]
-	calendarById *cache.Index[string, repo.Calendar]
+	calendars    *cache.Cache[*calendarv1.Calendar]
+	calendarById *cache.Index[string, *calendarv1.Calendar]
 
 	repo *app.App
 }
@@ -66,7 +66,20 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 	profileCache.Start(ctx)
 
 	// create a new calendar cache
-	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[repo.Calendar](svc.ListCalendars))
+	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[*calendarv1.Calendar](func(ctx context.Context) ([]*calendarv1.Calendar, error) {
+		googleCalendars, err := svc.Service.ListCalendars(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		ical, err := svc.ICalRepo.ListCalendars(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		return append(googleCalendars, ical...), nil
+	}))
+
 	calendarCache.Start(ctx)
 
 	s := &CalendarService{
@@ -82,8 +95,8 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 		}),
 
 		calendars: calendarCache,
-		calendarById: cache.CreateIndex(calendarCache, func(c repo.Calendar) (string, bool) {
-			return c.ID, true
+		calendarById: cache.CreateIndex(calendarCache, func(c *calendarv1.Calendar) (string, bool) {
+			return c.Id, true
 		}),
 	}
 
@@ -97,17 +110,13 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 
 	for _, cal := range res {
 		var userId string
-		if user, ok := svc.userByCalId.Get(cal.ID); ok {
+		if user, ok := svc.userByCalId.Get(cal.Id); ok {
 			userId = user.User.Id
 		}
 
-		response.Calendars = append(response.Calendars, &calendarv1.Calendar{
-			Id:       cal.ID,
-			Name:     cal.Name,
-			Timezone: cal.Timezone,
-			Color:    cal.Color,
-			UserId:   userId,
-		})
+		cal.UserId = userId
+
+		response.Calendars = append(response.Calendars, cal)
 	}
 
 	if req.Msg.IncludeVirtualResourceCalendars {
@@ -249,7 +258,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 		case *calendarv1.ListEventsRequest_AllCalendars:
 			for _, cal := range allCalendars {
-				calendarIds[cal.ID] = struct{}{}
+				calendarIds[cal.Id] = struct{}{}
 			}
 
 		case *calendarv1.ListEventsRequest_AllUsers:
@@ -365,13 +374,9 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 				userId = user.User.Id
 			}
 
-			calendarEvents.Calendar = &calendarv1.Calendar{
-				Id:       cal.ID,
-				Name:     cal.Name,
-				Timezone: cal.Timezone,
-				Color:    cal.Color,
-				UserId:   userId,
-			}
+			cal.UserId = userId
+
+			calendarEvents.Calendar = cal
 		}
 
 		for idx, e := range events {
@@ -502,6 +507,15 @@ func (svc *CalendarService) CreateEvent(ctx context.Context, req *connect.Reques
 		Resources:   req.Msg.Resources,
 	}
 
+	cal, ok := svc.calendarById.Get(req.Msg.CalendarId)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid calendar id"))
+	}
+
+	if cal.Readonly {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("calendar is read-only"))
+	}
+
 	var duration time.Duration
 	if end := req.Msg.End; end != nil {
 		if err := end.CheckValid(); err != nil {
@@ -563,6 +577,15 @@ func (svc *CalendarService) convertExtraData(_ context.Context, extra *anypb.Any
 
 func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Request[calendarv1.UpdateEventRequest]) (*connect.Response[calendarv1.UpdateEventResponse], error) {
 	msg := req.Msg
+
+	cal, ok := svc.calendarById.Get(req.Msg.CalendarId)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid calendar id"))
+	}
+
+	if cal.Readonly {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("calendar is read-only"))
+	}
 
 	evt, err := svc.repo.LoadEvent(ctx, msg.CalendarId, msg.EventId, true)
 	if err != nil {
@@ -658,6 +681,14 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 		}
 	}
 
+	cal, ok := svc.calendarById.Get(originCalendarID)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid source calendar id"))
+	}
+	if cal.Readonly {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("source calendar is read-only"))
+	}
+
 	targetCalendarID := req.Msg.GetTargetCalendarId()
 	if targetCalendarID == "" {
 		var err error
@@ -665,6 +696,15 @@ func (svc *CalendarService) MoveEvent(ctx context.Context, req *connect.Request[
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// validate the target calendar
+	cal, ok = svc.calendarById.Get(targetCalendarID)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid target calendar id"))
+	}
+	if cal.Readonly {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("target calendar is read-only"))
 	}
 
 	event, err := svc.repo.MoveEvent(ctx, originCalendarID, req.Msg.EventId, targetCalendarID)
@@ -697,6 +737,14 @@ func (svc *CalendarService) resolveUserCalendar(ctx context.Context, id string) 
 }
 
 func (svc *CalendarService) DeleteEvent(ctx context.Context, req *connect.Request[calendarv1.DeleteEventRequest]) (*connect.Response[calendarv1.DeleteEventResponse], error) {
+	cal, ok := svc.calendarById.Get(req.Msg.CalendarId)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid calendar id"))
+	}
+	if cal.Readonly {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("calendar is read-only"))
+	}
+
 	if err := svc.repo.DeleteEvent(ctx, req.Msg.CalendarId, req.Msg.EventId); err != nil {
 		return nil, err
 	}

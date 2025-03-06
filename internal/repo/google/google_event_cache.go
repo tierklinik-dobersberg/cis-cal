@@ -1,4 +1,4 @@
-package repo
+package google
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
 	eventsv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1/eventsv1connect"
+	"github.com/tierklinik-dobersberg/cis-cal/internal/repo"
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/protobuf/proto"
@@ -28,7 +29,7 @@ type googleEventCache struct {
 
 	calID        string
 	calendarName string
-	events       []Event
+	events       []repo.Event
 	svc          *calendar.Service
 	eventService eventsv1connect.EventServiceClient
 	wg           sync.WaitGroup
@@ -201,12 +202,12 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		ec.log.Info("processed updates", "updates", updatesProcessed)
 	}
 
-	sort.Sort(ByStartTime(ec.events))
+	sort.Sort(repo.ByStartTime(ec.events))
 
 	return true
 }
 
-func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event) (*Event, string) {
+func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event) (*repo.Event, string) {
 	foundAtIndex := -1
 	for idx, evt := range ec.events {
 		if evt.ID == item.Id {
@@ -275,7 +276,7 @@ func (ec *googleEventCache) evictEvents() {
 		return
 	}
 
-	filtered := make([]Event, 0, len(ec.events))
+	filtered := make([]repo.Event, 0, len(ec.events))
 
 	for _, evt := range ec.events {
 		if !currentMidnight.Before(evt.StartTime) {
@@ -297,7 +298,7 @@ func (ec *googleEventCache) evictEvents() {
 	}
 }
 
-func (ec *googleEventCache) appendEvents(events []Event, minTime time.Time) {
+func (ec *googleEventCache) appendEvents(events []repo.Event, minTime time.Time) {
 	ec.rw.Lock()
 	defer ec.rw.Unlock()
 
@@ -308,7 +309,7 @@ func (ec *googleEventCache) appendEvents(events []Event, minTime time.Time) {
 	}
 
 	// prepend all events to the cache
-	toAppend := make([]Event, 0, len(events))
+	toAppend := make([]repo.Event, 0, len(events))
 	for _, e := range events {
 		if _, ok := lm[e.ID]; !ok {
 			toAppend = append(toAppend, e)
@@ -331,7 +332,7 @@ func (ec *googleEventCache) currentMinTime() time.Time {
 	return ec.minTime
 }
 
-func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventSearchOptions) ([]Event, bool) {
+func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *repo.EventSearchOptions) ([]repo.Event, bool) {
 	// check if it's even possible to serve the request from cache.
 	if search == nil {
 		ec.log.Info("not using cache: search == nil")
@@ -351,7 +352,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 		return nil, false
 	}
 
-	var res []Event
+	var res []repo.Event
 
 	for _, evt := range ec.events {
 		matches := false
@@ -372,7 +373,7 @@ func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *EventS
 			if search.EventID != nil {
 				if evt.ID == *search.EventID {
 					ec.log.Debug("found event in cache", "event-id", *search.EventID)
-					return []Event{evt}, true
+					return []repo.Event{evt}, true
 				}
 			} else {
 				res = append(res, evt)

@@ -24,6 +24,7 @@ require (
 
 require (
 	cel.dev/expr v0.21.2 // indirect
+	github.com/arran4/golang-ical v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
