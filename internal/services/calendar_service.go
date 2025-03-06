@@ -65,7 +65,19 @@ func New(ctx context.Context, svc *app.App) *CalendarService {
 	profileCache.Start(ctx)
 
 	// create a new calendar cache
-	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[repo.Calendar](svc.Google.ListCalendars))
+	calendarCache := cache.NewCache("calendars", time.Minute*5, cache.LoaderFunc[repo.Calendar](func(ctx context.Context) ([]repo.Calendar, error) {
+		googleCals, err := svc.Google.ListCalendars(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		icals, err := svc.ICalRepo.ListCalendars(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		return append(googleCals, icals...), nil
+	}))
 
 	calendarCache.Start(ctx)
 
@@ -125,18 +137,9 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 				Timezone:          time.Local.String(),
 				Color:             r.Color,
 				IsVirtualResource: true,
+				Readonly:          true,
 			})
 		}
-	}
-
-	// load and append ical calendars
-	ical, err := svc.repo.ICalRepo.ListCalendars(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, c := range ical {
-		response.Calendars = append(response.Calendars, c.ToProto())
 	}
 
 	return connect.NewResponse(response), nil
