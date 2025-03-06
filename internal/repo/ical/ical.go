@@ -66,7 +66,7 @@ func (r *Repository) Start(ctx context.Context) {
 	}()
 }
 
-func (r *Repository) Add(cfg config.ICalConfig) error {
+func (r *Repository) Add(cfg config.ICalConfig, triggerRefresh bool) error {
 	r.calendarLock.Lock()
 	defer r.calendarLock.Unlock()
 
@@ -79,7 +79,9 @@ func (r *Repository) Add(cfg config.ICalConfig) error {
 	r.calendars = append(r.calendars, cfg)
 
 	// trigger a refresh
-	r.triggerRefresh <- struct{}{}
+	if triggerRefresh {
+		r.triggerRefresh <- struct{}{}
+	}
 
 	return nil
 }

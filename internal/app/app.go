@@ -42,12 +42,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	// prepare the ical calendars
 	icalRepo := ical.New()
 	for _, cfg := range cfg.ICals {
-		if err := icalRepo.Add(cfg); err != nil {
+		if err := icalRepo.Add(cfg, false); err != nil {
 			return nil, fmt.Errorf("failed to add ical calendar to repository: %w", err)
 		}
 
 		slog.Info("added iCal calendar resource", "name", cfg.Name)
 	}
+
+	icalRepo.Start(ctx)
 
 	// prepare the resource database
 	resourceDb, err := resources.NewDatabase(ctx, mongoClient.Database(cfg.MongoDatabaseName))
