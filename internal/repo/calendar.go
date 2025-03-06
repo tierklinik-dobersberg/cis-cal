@@ -13,6 +13,7 @@ type Calendar struct {
 	Timezone string
 	Color    string
 	Readonly bool
+	Hidden   bool
 
 	Reader
 }

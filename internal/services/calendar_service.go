@@ -113,6 +113,10 @@ func (svc *CalendarService) ListCalendars(ctx context.Context, req *connect.Requ
 			userId = user.User.Id
 		}
 
+		if cal.Hidden {
+			continue
+		}
+
 		protoCal := cal.ToProto()
 		protoCal.UserId = userId
 
@@ -259,6 +263,10 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 
 		case *calendarv1.ListEventsRequest_AllCalendars:
 			for _, cal := range allCalendars {
+				if cal.Hidden {
+					continue
+				}
+
 				calendarIds[cal.ID] = struct{}{}
 			}
 

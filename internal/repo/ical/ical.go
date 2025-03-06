@@ -193,10 +193,6 @@ func (r *Repository) ListCalendars(ctx context.Context) ([]repo.Calendar, error)
 	result := make([]repo.Calendar, len(cals))
 
 	for idx, c := range cals {
-		if c.Hidden {
-			continue
-		}
-
 		result[idx] = repo.Calendar{
 			ID:       c.Name,
 			Name:     c.Name,
@@ -204,6 +200,7 @@ func (r *Repository) ListCalendars(ctx context.Context) ([]repo.Calendar, error)
 			Color:    c.Color,
 			Readonly: true,
 			Reader:   r,
+			Hidden:   c.Hidden,
 		}
 	}
 
