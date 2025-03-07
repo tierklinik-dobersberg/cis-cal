@@ -3,6 +3,8 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	calendarv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1"
@@ -71,6 +73,23 @@ type EventSearchOptions struct {
 	FromTime *time.Time
 	ToTime   *time.Time
 	EventID  *string
+}
+
+func (s *EventSearchOptions) String() string {
+	var str []string
+	if s.FromTime != nil {
+		str = append(str, fmt.Sprintf("from=%s", s.FromTime.Format(time.RFC3339)))
+	}
+
+	if s.ToTime != nil {
+		str = append(str, fmt.Sprintf("to=%s", s.ToTime.Format(time.RFC3339)))
+	}
+
+	if s.EventID != nil {
+		str = append(str, fmt.Sprintf("id=%s", *s.EventID))
+	}
+
+	return strings.Join(str, " ")
 }
 
 func (s *EventSearchOptions) From(t time.Time) *EventSearchOptions {

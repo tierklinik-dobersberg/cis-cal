@@ -228,17 +228,17 @@ func (r *Repository) ListEvents(ctx context.Context, calId string, opts ...repo.
 		return nil, err
 	}
 
-	r.eventsLock.RLock()
-	defer r.eventsLock.RUnlock()
-
-	all := slices.Clone(r.events[calId])
-
-	events := make([]repo.Event, 0, len(all))
-
 	search := new(repo.EventSearchOptions)
 	for _, o := range opts {
 		o(search)
 	}
+	slog.Info("searching for ical events", "filter", search.String())
+
+	r.eventsLock.RLock()
+	defer r.eventsLock.RUnlock()
+
+	all := slices.Clone(r.events[calId])
+	events := make([]repo.Event, 0, len(all))
 
 	for _, evt := range all {
 		if !repo.EventMatches(evt, search) {
