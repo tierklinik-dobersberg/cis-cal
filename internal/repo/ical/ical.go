@@ -164,7 +164,10 @@ func (r *Repository) update(ctx context.Context, lastUpdates map[string]time.Tim
 
 				events[cfg.Name] = append(events[cfg.Name], converted)
 			}
+
 		}
+
+		slog.Info("loaded events for virtual ical calendar", "name", cfg.Name, "count", len(events[cfg.Name]))
 	}
 
 	r.eventsLock.Lock()
@@ -207,7 +210,24 @@ func (r *Repository) ListCalendars(ctx context.Context) ([]repo.Calendar, error)
 	return result, nil
 }
 
+func (r *Repository) exists(id string) error {
+	r.calendarLock.Lock()
+	defer r.calendarLock.Unlock()
+
+	for _, c := range r.calendars {
+		if c.Name == id {
+			return nil
+		}
+	}
+
+	return repo.ErrNotFound
+}
+
 func (r *Repository) ListEvents(ctx context.Context, calId string, opts ...repo.SearchOption) ([]repo.Event, error) {
+	if err := r.exists(calId); err != nil {
+		return nil, err
+	}
+
 	r.eventsLock.RLock()
 	defer r.eventsLock.RUnlock()
 
@@ -232,6 +252,10 @@ func (r *Repository) ListEvents(ctx context.Context, calId string, opts ...repo.
 }
 
 func (r *Repository) LoadEvent(ctx context.Context, calId string, eventId string, _ bool) (*repo.Event, error) {
+	if err := r.exists(calId); err != nil {
+		return nil, err
+	}
+
 	r.eventsLock.RLock()
 	defer r.eventsLock.RUnlock()
 
