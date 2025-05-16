@@ -71,7 +71,7 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 	var resources []string
 
 	if item.ExtendedProperties != nil && len(item.ExtendedProperties.Shared) > 0 {
-		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.CustomerAnnoation"]; ok {
+		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.CustomerAnnotation"]; ok {
 			ca = new(calendarv1.CustomerAnnotation)
 
 			if err := protojson.Unmarshal([]byte(value), ca); err != nil {
