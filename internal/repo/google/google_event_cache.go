@@ -335,11 +335,9 @@ func (ec *googleEventCache) currentMinTime() time.Time {
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *repo.EventSearchOptions) ([]repo.Event, bool) {
 	// check if it's even possible to serve the request from cache.
 	if search == nil {
-		ec.log.Info("not using cache: search == nil")
 		return nil, false
 	}
 	if search.FromTime == nil {
-		ec.log.Info("not using cache: search.from == nil")
 		return nil, false
 	}
 

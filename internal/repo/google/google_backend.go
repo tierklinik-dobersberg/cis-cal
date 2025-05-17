@@ -348,6 +348,16 @@ func (svc *GoogleBackend) loadEvents(ctx context.Context, calendarID string, sea
 		if searchOpts.EventID != nil {
 			key += "-" + *searchOpts.EventID
 		}
+
+		if searchOpts.CustomerID != nil {
+			key += "-" + *searchOpts.CustomerID
+			call = call.SharedExtendedProperty(fmt.Sprintf("tkd.calendar.v1.customerId=%s", *searchOpts.CustomerID))
+		}
+
+		if searchOpts.SearchText != nil {
+			key += "-" + *searchOpts.SearchText
+			call = call.Q(*searchOpts.SearchText)
+		}
 	}
 
 	res, err, _ := svc.loadGroup.Do(key, func() (interface{}, error) {

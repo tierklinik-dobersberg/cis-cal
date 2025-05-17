@@ -70,9 +70,11 @@ func (el EventList) Swap(i, j int) {
 }
 
 type EventSearchOptions struct {
-	FromTime *time.Time
-	ToTime   *time.Time
-	EventID  *string
+	FromTime   *time.Time
+	ToTime     *time.Time
+	EventID    *string
+	CustomerID *string
+	SearchText *string
 }
 
 func (s *EventSearchOptions) String() string {
@@ -114,6 +116,18 @@ func (s *EventSearchOptions) ForDay(t time.Time) *EventSearchOptions {
 func WithEventsAfter(after time.Time) SearchOption {
 	return func(eso *EventSearchOptions) {
 		eso.FromTime = &after
+	}
+}
+
+func WithCustomerID(id string) SearchOption {
+	return func(eso *EventSearchOptions) {
+		eso.CustomerID = &id
+	}
+}
+
+func WithSearchText(text string) SearchOption {
+	return func(eso *EventSearchOptions) {
+		eso.SearchText = &text
 	}
 }
 

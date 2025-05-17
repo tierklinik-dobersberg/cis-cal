@@ -1,8 +1,8 @@
 module github.com/tierklinik-dobersberg/cis-cal
 
-go 1.23.0
+go 1.23.8
 
-toolchain go1.23.4
+toolchain go1.23.8
 
 require (
 	github.com/bufbuild/connect-go v1.10.0
@@ -10,7 +10,7 @@ require (
 	github.com/mennanov/fmutils v0.3.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
-	github.com/tierklinik-dobersberg/apis v0.39.1
+	github.com/tierklinik-dobersberg/apis v0.47.1
 	github.com/tierklinik-dobersberg/cis v1.5.0
 	go.mongodb.org/mongo-driver v1.17.2
 	go.opentelemetry.io/otel v1.34.0

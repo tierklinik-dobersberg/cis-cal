@@ -1,5 +1,7 @@
 package repo
 
+import "strings"
+
 func EventMatches(evt Event, search *EventSearchOptions) bool {
 	matches := false
 
@@ -17,6 +19,24 @@ func EventMatches(evt Event, search *EventSearchOptions) bool {
 
 	if search.EventID != nil && evt.ID != *search.EventID {
 		matches = false
+	}
+
+	if search.CustomerID != nil {
+		if evt.CustomerAnnotation == nil {
+			matches = false
+		}
+
+		if evt.CustomerAnnotation.CustomerId != *search.CustomerID {
+			matches = false
+		}
+	}
+
+	if search.SearchText != nil {
+		lower := strings.ToLower(*search.SearchText)
+
+		if !strings.Contains(strings.ToLower(evt.Summary), lower) && !strings.Contains(strings.ToLower(evt.Description), lower) {
+			matches = false
+		}
 	}
 
 	return matches

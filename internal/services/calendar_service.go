@@ -195,6 +195,14 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 		}
 	}
 
+	if req.Msg.CustomerId != "" {
+		opts = append(opts, repo.WithCustomerID(req.Msg.CustomerId))
+	}
+
+	if req.Msg.SearchText != "" {
+		opts = append(opts, repo.WithSearchText(req.Msg.SearchText))
+	}
+
 	readMask := []string{"results.calendar", "results.events"}
 	if req.Msg.ReadMask != nil && len(req.Msg.ReadMask.Paths) > 0 {
 		readMask = req.Msg.ReadMask.Paths
