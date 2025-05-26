@@ -108,6 +108,22 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	ec.rw.Lock()
 	defer ec.rw.Unlock()
 
+	// delete all events that are before minTime
+	// TODO(ppacher): this wil degrade performance a lot but otherwise
+	// we are currently keeping delete events in cache.
+
+	events := make([]repo.Event, 0, len(ec.events))
+	for _, e := range ec.events {
+		if e.StartTime.Before(ec.minTime) {
+			if e.EndTime != nil && e.EndTime.Before(ec.minTime) {
+				continue
+			}
+		}
+
+		events = append(events, e)
+	}
+	ec.events = events
+
 	call := ec.svc.Events.List(ec.calID)
 	if ec.syncToken == "" {
 		ec.events = nil
