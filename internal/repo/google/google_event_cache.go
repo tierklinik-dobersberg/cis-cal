@@ -238,7 +238,14 @@ func (ec *googleEventCache) deleteEvent(id string) bool {
 	oldLen := len(ec.events)
 	ec.events = newEvents
 
-	return oldLen != len(newEvents)
+	deleted := oldLen != len(newEvents)
+	if deleted {
+		ec.log.Info("deleted event", "id", id)
+	} else {
+		ec.log.Warn("failed to delete event", "id", id)
+	}
+
+	return deleted
 }
 
 func (ec *googleEventCache) replaceEvent(id string, newModel repo.Event) bool {
