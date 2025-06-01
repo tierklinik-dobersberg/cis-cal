@@ -203,11 +203,24 @@ func (svc *GoogleBackend) CreateEvent(ctx context.Context, calID, name, descript
 	}
 	logrus.Infof("created event with id %s", res.Id)
 
+	model, err := googleEventToModel(ctx, calID, res)
+	if err != nil {
+		return nil, err
+	}
+
 	if cache, _ := svc.cacheFor(ctx, calID); cache != nil {
+		// append the new event to the cache immediately. Searching through the cache
+		// will still filter the results correctly and a upcoming sync will just replace it
+		// instead of adding it a second time.
+		cache.rw.Lock()
+		defer cache.rw.Unlock()
+
+		cache.events = append(cache.events, *model)
+
 		cache.triggerSync()
 	}
 
-	return googleEventToModel(ctx, calID, res)
+	return model, nil
 }
 
 func (svc *GoogleBackend) UpdateEvent(ctx context.Context, event repo.Event) (*repo.Event, error) {
@@ -230,13 +243,26 @@ func (svc *GoogleBackend) UpdateEvent(ctx context.Context, event repo.Event) (*r
 		return nil, err
 	}
 
+	model, err := googleEventToModel(ctx, event.CalendarID, evt)
+	if err != nil {
+		return nil, err
+	}
+
 	if cache, err := svc.cacheFor(ctx, event.CalendarID); err == nil && cache != nil {
+		// append the new event to the cache immediately. Searching through the cache
+		// will still filter the results correctly and a upcoming sync will just replace it
+		// again
+		cache.rw.Lock()
+		defer cache.rw.Unlock()
+
+		cache.replaceEvent(model.ID, *model)
+
 		cache.triggerSync()
 	} else {
 		logrus.Errorf("[update] failed to trigger sync for event calendar id %q: %s", event.CalendarID, err)
 	}
 
-	return googleEventToModel(ctx, event.CalendarID, evt)
+	return model, nil
 }
 
 func (svc *GoogleBackend) MoveEvent(ctx context.Context, originCalendarId string, eventId string, targetCalendarId string) (*repo.Event, error) {
@@ -245,21 +271,33 @@ func (svc *GoogleBackend) MoveEvent(ctx context.Context, originCalendarId string
 		return nil, err
 	}
 
+	model, err := googleEventToModel(ctx, targetCalendarId, result)
+	if err != nil {
+		return nil, err
+	}
+
 	if cache, err := svc.cacheFor(ctx, originCalendarId); err == nil && cache != nil {
-		// delete the event from the cache and trigger a sync
+		// see comment for DeleteEvent
+		cache.rw.Lock()
+		defer cache.rw.Unlock()
 		cache.deleteEvent(eventId)
+
 		cache.triggerSync()
 	} else {
 		logrus.Errorf("[move] failed to trigger sync for origin calendar id %q: %s", originCalendarId, err)
 	}
 
 	if cache, err := svc.cacheFor(ctx, targetCalendarId); err == nil && cache != nil {
+		cache.rw.Lock()
+		defer cache.rw.Unlock()
+		cache.events = append(cache.events, *model)
+
 		cache.triggerSync()
 	} else {
 		logrus.Errorf("[move] failed to trigger sync for target calendar id %q: %s", targetCalendarId, err)
 	}
 
-	return googleEventToModel(ctx, targetCalendarId, result)
+	return model, nil
 }
 
 func (svc *GoogleBackend) DeleteEvent(ctx context.Context, calID, eventID string) error {
@@ -270,6 +308,10 @@ func (svc *GoogleBackend) DeleteEvent(ctx context.Context, calID, eventID string
 
 	cache, err := svc.cacheFor(ctx, calID)
 	if err == nil {
+		cache.rw.Lock()
+		defer cache.rw.Unlock()
+		cache.deleteEvent(eventID)
+
 		cache.triggerSync()
 	}
 
