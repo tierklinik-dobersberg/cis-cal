@@ -173,7 +173,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid format for date field, expected YYYY-MM-DD or YYYY/MM/DD"))
 		}
 
-		nextDay := day.Add(time.Hour * 24)
+		nextDay := day.AddDate(0, 0, 1)
 
 		start = day
 		end = nextDay

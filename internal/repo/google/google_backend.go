@@ -339,14 +339,11 @@ func (svc *GoogleBackend) loadEvents(ctx context.Context, calendarID string, sea
 			key += fmt.Sprintf("-%s", searchOpts.FromTime.Format(time.RFC3339))
 		}
 
-		upper := cache.currentMinTime()
-
-		if searchOpts.ToTime != nil && searchOpts.ToTime.After(upper) {
-			upper = *searchOpts.ToTime
+		if searchOpts.ToTime != nil {
+			upper := *searchOpts.ToTime
+			call = call.TimeMax(upper.Format(time.RFC3339))
+			key += fmt.Sprintf("-%s", upper.Format(time.RFC3339))
 		}
-
-		call = call.TimeMax(upper.Format(time.RFC3339))
-		key += fmt.Sprintf("-%s", upper.Format(time.RFC3339))
 
 		if searchOpts.EventID != nil {
 			key += "-" + *searchOpts.EventID
