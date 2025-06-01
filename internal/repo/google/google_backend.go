@@ -270,7 +270,6 @@ func (svc *GoogleBackend) DeleteEvent(ctx context.Context, calID, eventID string
 
 	cache, err := svc.cacheFor(ctx, calID)
 	if err == nil {
-		cache.deleteEvent(eventID)
 		cache.triggerSync()
 	}
 

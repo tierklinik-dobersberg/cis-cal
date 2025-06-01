@@ -126,6 +126,8 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	}
 
 	updatesProcessed := 0
+	changeTypes := make(map[string]int)
+
 	pageToken := ""
 	for {
 		if pageToken != "" {
@@ -149,6 +151,8 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 
 		for _, item := range res.Items {
 			evt, change := ec.syncEvent(ctx, item)
+
+			changeTypes[change]++
 
 			req := &calendarv1.CalendarChangeEvent{
 				Calendar: ec.calID,
@@ -201,7 +205,7 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		return false
 	}
 	if updatesProcessed > 0 {
-		ec.log.Info("processed updates", "updates", updatesProcessed)
+		ec.log.Info("processed updates", "updates", updatesProcessed, "types", changeTypes)
 	}
 
 	sort.Sort(repo.ByStartTime(ec.events))
