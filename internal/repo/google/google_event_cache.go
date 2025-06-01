@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -161,10 +162,6 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		for _, item := range res.Items {
 			evt, change := ec.syncEvent(ctx, item)
 
-			if evt == nil {
-				continue
-			}
-
 			req := &calendarv1.CalendarChangeEvent{
 				Calendar: ec.calID,
 			}
@@ -172,8 +169,9 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 			switch change {
 			case "deleted":
 				req.Kind = &calendarv1.CalendarChangeEvent_DeletedEventId{
-					DeletedEventId: evt.ID,
+					DeletedEventId: item.Id,
 				}
+
 			default:
 				p, err := evt.ToProto()
 				if err != nil {
@@ -224,42 +222,57 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 }
 
 func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event) (*repo.Event, string) {
-	foundAtIndex := -1
-	for idx, evt := range ec.events {
-		if evt.ID == item.Id {
-			foundAtIndex = idx
-
-			break
-		}
-	}
-	if foundAtIndex > -1 {
-		// check if the item has been deleted
-		if item.Start == nil {
-			evt := ec.events[foundAtIndex]
-			ec.events = append(ec.events[:foundAtIndex], ec.events[foundAtIndex+1:]...)
-
-			return &evt, "deleted"
-		}
-
-		// this should be an update
-		evt, err := googleEventToModel(ctx, ec.calID, item)
-		if err != nil {
-			ec.log.Error("failed to convert event", "event-id", item.Id, "error", err)
-			return nil, ""
-		}
-		ec.events[foundAtIndex] = *evt
-
-		return evt, "updated"
-	}
-
 	evt, err := googleEventToModel(ctx, ec.calID, item)
 	if err != nil {
 		ec.log.Error("failed to convert event", "event-id", item.Id, "error", err)
 		return nil, ""
 	}
-	ec.events = append(ec.events, *evt)
+
+	// this event has been deleted
+	if item.Start == nil {
+		ec.deleteEvent(item.Id)
+		return nil, "deleted"
+	}
+
+	replaced := ec.replaceOrAppend(item.Id, *evt)
+	if replaced {
+		return evt, "updated"
+	}
 
 	return evt, "created"
+}
+
+func (ec *googleEventCache) deleteEvent(id string) bool {
+	newEvents := slices.DeleteFunc(ec.events, func(e repo.Event) bool {
+		return e.ID == id
+	})
+
+	oldLen := len(ec.events)
+	ec.events = newEvents
+
+	return oldLen != len(newEvents)
+}
+
+func (ec *googleEventCache) replaceEvent(id string, newModel repo.Event) bool {
+	idx := slices.IndexFunc(ec.events, func(e repo.Event) bool {
+		return e.ID == id
+	})
+
+	if idx < 0 {
+		return false
+	}
+
+	ec.events[idx] = newModel
+	return true
+}
+
+func (ec *googleEventCache) replaceOrAppend(id string, newModel repo.Event) bool {
+	if ec.replaceEvent(id, newModel) {
+		return true
+	}
+
+	ec.events = append(ec.events, newModel)
+	return false
 }
 
 func (ec *googleEventCache) evicter(ctx context.Context) {
@@ -337,6 +350,9 @@ func (ec *googleEventCache) appendEvents(events []repo.Event, minTime time.Time)
 	if minTime.Before(ec.minTime) {
 		ec.minTime = minTime
 	}
+
+	// clear the sync-token
+	ec.syncToken = ""
 
 	ec.log.Info("out-of-cache events append", "count", len(toAppend), "cache-size", len(ec.events))
 }

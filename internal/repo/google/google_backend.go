@@ -246,6 +246,8 @@ func (svc *GoogleBackend) MoveEvent(ctx context.Context, originCalendarId string
 	}
 
 	if cache, err := svc.cacheFor(ctx, originCalendarId); err == nil && cache != nil {
+		// delete the event from the cache and trigger a sync
+		cache.deleteEvent(eventId)
 		cache.triggerSync()
 	} else {
 		logrus.Errorf("[move] failed to trigger sync for origin calendar id %q: %s", originCalendarId, err)
@@ -268,6 +270,7 @@ func (svc *GoogleBackend) DeleteEvent(ctx context.Context, calID, eventID string
 
 	cache, err := svc.cacheFor(ctx, calID)
 	if err == nil {
+		cache.deleteEvent(eventID)
 		cache.triggerSync()
 	}
 
