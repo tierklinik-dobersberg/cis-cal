@@ -221,8 +221,9 @@ func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event)
 	}
 
 	// this event has been deleted
-	if item.Start == nil {
+	if item.Status == "cancelled" {
 		ec.deleteEvent(item.Id)
+
 		return nil, "deleted"
 	}
 
