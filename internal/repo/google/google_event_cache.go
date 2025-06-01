@@ -54,10 +54,11 @@ func newCache(ctx context.Context, id string, name string, svc *calendar.Service
 		log:           slog.With("calendar", name, "id", id),
 	}
 
-	cache.wg.Add(2)
+	cache.wg.Add(1)
 
 	go cache.watch(ctx)
-	go cache.evicter(ctx)
+
+	//go cache.evicter(ctx)
 
 	<-cache.firstLoadDone
 
@@ -109,28 +110,15 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	ec.rw.Lock()
 	defer ec.rw.Unlock()
 
-	// delete all events that are before minTime
-	// TODO(ppacher): this wil degrade performance a lot but otherwise
-	// we are currently keeping delete events in cache.
-
-	events := make([]repo.Event, 0, len(ec.events))
-	for _, e := range ec.events {
-		if e.StartTime.Before(ec.minTime) {
-			if e.EndTime != nil && e.EndTime.Before(ec.minTime) {
-				continue
-			}
-		}
-
-		events = append(events, e)
-	}
-	ec.events = events
-
 	call := ec.svc.Events.List(ec.calID)
 	if ec.syncToken == "" {
 		ec.events = nil
 		now := time.Now().Local()
+
 		currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-		ec.minTime = currentMidnight
+		startOfCache := currentMidnight.AddDate(-1, 0, 0)
+
+		ec.minTime = startOfCache
 
 		call.ShowDeleted(false).SingleEvents(false).TimeMin(ec.minTime.Format(time.RFC3339))
 	} else {
@@ -325,36 +313,6 @@ func (ec *googleEventCache) evictEvents() {
 	if len(filtered) > 0 {
 		ec.log.Info("evicted events from cache", "evicted", countBefore-len(filtered), "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
 	}
-}
-
-func (ec *googleEventCache) appendEvents(events []repo.Event, minTime time.Time) {
-	ec.rw.Lock()
-	defer ec.rw.Unlock()
-
-	// create a lookup map of events we already have
-	lm := make(map[string]struct{}, len(ec.events))
-	for _, e := range ec.events {
-		lm[e.ID] = struct{}{}
-	}
-
-	// prepend all events to the cache
-	toAppend := make([]repo.Event, 0, len(events))
-	for _, e := range events {
-		if _, ok := lm[e.ID]; !ok {
-			toAppend = append(toAppend, e)
-		}
-	}
-
-	ec.events = append(toAppend, ec.events...)
-
-	if minTime.Before(ec.minTime) {
-		ec.minTime = minTime
-	}
-
-	// clear the sync-token
-	ec.syncToken = ""
-
-	ec.log.Info("out-of-cache events append", "count", len(toAppend), "cache-size", len(ec.events))
 }
 
 func (ec *googleEventCache) currentMinTime() time.Time {

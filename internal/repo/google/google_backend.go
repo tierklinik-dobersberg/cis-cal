@@ -405,11 +405,6 @@ func (svc *GoogleBackend) loadEvents(ctx context.Context, calendarID string, sea
 			break
 		}
 
-		// if we got a cache, append the results to the cache
-		if searchOpts.FromTime != nil {
-			cache.appendEvents(events, *searchOpts.FromTime)
-		}
-
 		return events, nil
 	})
 
@@ -417,21 +412,7 @@ func (svc *GoogleBackend) loadEvents(ctx context.Context, calendarID string, sea
 		return nil, fmt.Errorf("failed to fetch events: %w", err)
 	}
 
-	// if we did not have any search-opts, searched for a single event ID or do not have a start
-	// time we return the result immediately from the fetched result.
-	if searchOpts == nil || searchOpts.EventID != nil || searchOpts.FromTime == nil {
-		// trunk-ignore(golangci-lint/forcetypeassert)
-		return res.([]repo.Event), nil
-	}
-
-	// otherwise, the result should have been appended to the cache so it's now save
-	// to query the cache again.
-	result, ok := cache.tryLoadFromCache(ctx, searchOpts)
-	if !ok {
-		return nil, fmt.Errorf("internal server error, cache should be able to fullfill request now")
-	}
-
-	return result, nil
+	return res.([]repo.Event), nil
 }
 
 func (svc *GoogleBackend) shouldIngore(item *calendar.CalendarListEntry) bool {
