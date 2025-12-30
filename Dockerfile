@@ -1,6 +1,6 @@
 # Build the gobinary
 
-FROM golang:1.23 as gobuild
+FROM golang:1.25 as gobuild
 
 RUN update-ca-certificates
 
