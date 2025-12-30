@@ -58,8 +58,6 @@ func newCache(ctx context.Context, id string, name string, svc *calendar.Service
 
 	go cache.watch(ctx)
 
-	//go cache.evicter(ctx)
-
 	<-cache.firstLoadDone
 
 	return cache, nil
@@ -273,65 +271,6 @@ func (ec *googleEventCache) replaceOrAppend(id string, newModel repo.Event) bool
 
 	ec.events = append(ec.events, newModel)
 	return false
-}
-
-func (ec *googleEventCache) evicter(ctx context.Context) {
-	defer ec.wg.Done()
-
-	ticker := time.NewTicker(time.Hour)
-
-	for {
-		select {
-		case <-ticker.C:
-		case <-ctx.Done():
-			return
-		}
-
-		ec.evictEvents()
-	}
-}
-
-func (ec *googleEventCache) evictEvents() {
-	now := time.Now().Local()
-	currentMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-
-	ec.rw.Lock()
-	defer ec.rw.Unlock()
-
-	countBefore := len(ec.events)
-
-	// only try to evict events if we have more than 500 per calendar cache.
-	if countBefore < 500 {
-		return
-	}
-
-	filtered := make([]repo.Event, 0, len(ec.events))
-
-	for _, evt := range ec.events {
-		if !currentMidnight.Before(evt.StartTime) {
-			filtered = append(filtered, evt)
-			continue
-		}
-
-		if evt.EndTime != nil && !evt.EndTime.Before(currentMidnight) {
-			filtered = append(filtered, evt)
-			continue
-		}
-	}
-
-	ec.events = filtered
-	ec.minTime = currentMidnight
-
-	if len(filtered) > 0 {
-		ec.log.Info("evicted events from cache", "evicted", countBefore-len(filtered), "cache-start-time", ec.minTime.Format(time.RFC3339), "cache-size", len(ec.events))
-	}
-}
-
-func (ec *googleEventCache) currentMinTime() time.Time {
-	ec.rw.RLock()
-	defer ec.rw.RUnlock()
-
-	return ec.minTime
 }
 
 func (ec *googleEventCache) tryLoadFromCache(ctx context.Context, search *repo.EventSearchOptions) ([]repo.Event, bool) {

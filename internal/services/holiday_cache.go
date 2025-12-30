@@ -71,7 +71,7 @@ func LoadHolidays(ctx context.Context, country string, year int) ([]PublicHolida
 		return nil, err
 	}
 
-	log.L(ctx).Infof("loaded holidays for %s in %d: %+v", country, year, result)
+	log.L(ctx).Info("successfully loaded public holidays", "country", country, "year", year, "result", result)
 
 	return result, nil
 }
@@ -106,14 +106,13 @@ func (cache *HolidayCache) Get(ctx context.Context, country string, year int) ([
 
 	if entry, ok := cache.cache[fmt.Sprintf("%s-%d", country, year)]; ok {
 		defer cache.rw.RUnlock()
-		log.Infof("Using cache entry for holidays in %s at %d", country, year)
 
 		if entry.Loaded.Before(time.Now().Add(time.Hour * -24)) {
-			log.Infof("Re-fetching holidays for %s in %d", country, year)
+			log.Info("Re-fetching public holidays", "country", country, "year", year)
 			go func() {
 				_, err := cache.load(country, year)
 				if err != nil {
-					log.Errorf("failed to re-fetch holidays: %s", err)
+					log.Error("failed to re-fetch public holidays", "error", err)
 				}
 			}()
 		}
@@ -123,7 +122,7 @@ func (cache *HolidayCache) Get(ctx context.Context, country string, year int) ([
 
 	cache.rw.RUnlock()
 
-	log.Infof("Fetching holidays for %s in %d", country, year)
+	log.Info("Fetching public holidays", "country", country, "year", year)
 	e, err := cache.load(country, year)
 	if err != nil {
 		return nil, err

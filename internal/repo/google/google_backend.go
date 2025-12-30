@@ -143,7 +143,7 @@ func (svc *GoogleBackend) ListEvents(ctx context.Context, calendarID string, sea
 	return svc.loadEvents(ctx, calendarID, opts, cache)
 }
 
-func getExtendedProps(resources []string, data *calendarv1.CustomerAnnotation) map[string]string {
+func getExtendedProps(resources []string, data *calendarv1.CustomerAnnotation, completed bool) map[string]string {
 	props := make(map[string]string, 2)
 	if data != nil {
 		if data.CustomerId != "" {
@@ -165,6 +165,12 @@ func getExtendedProps(resources []string, data *calendarv1.CustomerAnnotation) m
 		} else {
 			props["tkd.calendar.v1.ResourceNames"] = string(jsonBlob)
 		}
+	}
+
+	if completed {
+		props["tkd.calendar.v1.completed"] = "true"
+	} else {
+		props["tkd.calendar.v1.completed"] = "false"
 	}
 
 	return props
@@ -193,7 +199,7 @@ func (svc *GoogleBackend) CreateEvent(ctx context.Context, calID, name, descript
 		},
 		Status: "confirmed",
 		ExtendedProperties: &calendar.EventExtendedProperties{
-			Shared: getExtendedProps(resources, data),
+			Shared: getExtendedProps(resources, data, false),
 		},
 	}).Context(ctx).Do()
 	if err != nil {
@@ -235,7 +241,7 @@ func (svc *GoogleBackend) UpdateEvent(ctx context.Context, event repo.Event) (*r
 		},
 		Status: "confirmed",
 		ExtendedProperties: &calendar.EventExtendedProperties{
-			Shared: getExtendedProps(event.Resources, event.CustomerAnnotation),
+			Shared: getExtendedProps(event.Resources, event.CustomerAnnotation, event.Completed),
 		},
 	}).Context(ctx).Do()
 

@@ -51,6 +51,7 @@ type Event struct {
 	IsFree       bool
 	CreateTime   time.Time
 	Resources    []string
+	Completed    bool
 
 	CustomerAnnotation *calendarv1.CustomerAnnotation
 }

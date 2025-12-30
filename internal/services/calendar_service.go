@@ -232,7 +232,7 @@ func (svc *CalendarService) ListEvents(ctx context.Context, req *connect.Request
 	if req.Msg.Source == nil {
 		// only load the calendar assigned to the user
 
-		log.L(ctx).Infof("no calendar ids specified, loading user profile ...")
+		log.L(ctx).Info("no calendar ids specified, loading user profile ...")
 		user, ok := svc.byUserId.Get(req.Header().Get("X-Remote-User-ID"))
 		if !ok {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get authenticated user profile"))
@@ -622,6 +622,7 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 		"end",
 		"extra_data",
 		"resources",
+		"completed",
 	}
 
 	if um := msg.GetUpdateMask().GetPaths(); len(um) > 0 {
@@ -673,6 +674,9 @@ func (svc *CalendarService) UpdateEvent(ctx context.Context, req *connect.Reques
 
 		case "resources":
 			evt.Resources = req.Msg.Resources
+
+		case "completed":
+			evt.Completed = req.Msg.Completed
 
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid update_mask path %q", p))
@@ -788,7 +792,7 @@ func extractCalendarId(ctx context.Context, profile *idmv1.Profile) string {
 			case *structpb.Value_StringValue:
 				return v.StringValue
 			default:
-				log.L(ctx).Errorf("invalid value for calendarId extra field: %s", calVal.Kind)
+				log.L(ctx).Error("invalid value for calendarId extra field", "value", calVal.Kind)
 			}
 		}
 	}

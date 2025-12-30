@@ -51,7 +51,7 @@ func holidayToProto(ctx context.Context, p PublicHoliday) *calendarv1.PublicHoli
 			case "Observance":
 				protoType = calendarv1.HolidayType_OBSERVANCE
 			default:
-				log.L(ctx).Errorf("unsupported public holiday type %q", pType)
+				log.L(ctx).Error("Found unsupported public holiday type", "type", pType)
 
 				protoType = calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
 

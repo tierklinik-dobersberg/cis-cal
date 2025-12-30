@@ -69,6 +69,7 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 
 	var ca *calendarv1.CustomerAnnotation
 	var resources []string
+	var completed bool
 
 	if item.ExtendedProperties != nil && len(item.ExtendedProperties.Shared) > 0 {
 		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.CustomerAnnotation"]; ok {
@@ -85,6 +86,12 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 				slog.Error("failed to unmarshal resource-name annoation", "error", err)
 			}
 		}
+
+		if value, ok := item.ExtendedProperties.Shared["tkd.calendar.v1.completed"]; ok {
+			if err := json.Unmarshal([]byte(value), &completed); err != nil {
+				slog.Error("failed to unmarshal tkd.calendar.v1.completed", "error", err)
+			}
+		}
 	}
 
 	return &repo.Event{
@@ -97,6 +104,7 @@ func googleEventToModel(_ context.Context, calid string, item *calendar.Event) (
 		FullDayEvent:       item.Start.DateTime == "" && item.Start.Date != "",
 		CalendarID:         calid,
 		CreateTime:         createTime,
+		Completed:          completed,
 		CustomerAnnotation: ca,
 	}, nil
 }

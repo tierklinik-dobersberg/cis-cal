@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"buf.build/go/protovalidate"
 	"github.com/bufbuild/connect-go"
-	"github.com/bufbuild/protovalidate-go"
 	"github.com/sirupsen/logrus"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/calendar/v1/calendarv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/auth"
@@ -105,7 +105,7 @@ func main() {
 	}
 
 	if err := discovery.Register(ctx, catalog, &discovery.ServiceInstance{
-		Name:    wellknown.CalendarV1ServiceScope,
+		Name:    string(wellknown.CalendarV1ServiceScope),
 		Address: cfg.ListenAddress,
 	}); err != nil {
 		logrus.Errorf("failed to register service at catalog: %s", err)
