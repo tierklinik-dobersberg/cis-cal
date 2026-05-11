@@ -148,7 +148,12 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 		}
 
 		for _, item := range res.Items {
-			evt, change := ec.syncEvent(ctx, item)
+			evt, change, err := ec.syncEvent(ctx, item)
+
+			if err != nil {
+				ec.log.Error(err.Error())
+				continue
+			}
 
 			changeTypes[change]++
 
@@ -211,26 +216,25 @@ func (ec *googleEventCache) loadEvents(ctx context.Context) bool {
 	return true
 }
 
-func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event) (*repo.Event, string) {
+func (ec *googleEventCache) syncEvent(ctx context.Context, item *calendar.Event) (*repo.Event, string, error) {
 	evt, err := googleEventToModel(ctx, ec.calID, item)
 	if err != nil {
-		ec.log.Error("failed to convert event", "event-id", item.Id, "error", err)
-		return nil, ""
+		return nil, "", fmt.Errorf("failed to convert event: [event-id=%s] %s", item.Id, err)
 	}
 
 	// this event has been deleted
 	if item.Status == "cancelled" {
 		ec.deleteEvent(item.Id)
 
-		return nil, "deleted"
+		return nil, "deleted", nil
 	}
 
 	replaced := ec.replaceOrAppend(item.Id, *evt)
 	if replaced {
-		return evt, "updated"
+		return evt, "updated", nil
 	}
 
-	return evt, "created"
+	return evt, "created", nil
 }
 
 func (ec *googleEventCache) deleteEvent(id string) bool {
