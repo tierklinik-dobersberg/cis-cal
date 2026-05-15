@@ -36,6 +36,7 @@ func holidayToProto(ctx context.Context, p PublicHoliday) *calendarv1.PublicHoli
 	if slices.Contains(p.Types, "Public") {
 		protoType = calendarv1.HolidayType_PUBLIC
 	} else {
+		// FIXME(ppacher): Public already has priority but this is a bit flanky
 		for _, pType := range p.Types {
 			switch pType {
 			case "Public":
