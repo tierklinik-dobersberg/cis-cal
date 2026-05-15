@@ -9,7 +9,7 @@ require (
 	github.com/mennanov/fmutils v0.3.6
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
-	github.com/tierklinik-dobersberg/apis v0.54.1
+	github.com/tierklinik-dobersberg/apis v0.55.0
 	github.com/tierklinik-dobersberg/cis v1.6.0
 	go.mongodb.org/mongo-driver v1.17.9
 	go.opentelemetry.io/otel v1.43.0

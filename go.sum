@@ -378,6 +378,8 @@ github.com/testcontainers/testcontainers-go/modules/mongodb v0.35.0 h1:i1Kh9fmXg
 github.com/testcontainers/testcontainers-go/modules/mongodb v0.35.0/go.mod h1:SD8nVMK1m7b/K2YJqYjYNzfHmZfqHtqNOlI44nfxjdg=
 github.com/tierklinik-dobersberg/apis v0.54.1 h1:SSXy0V/0wVyp5M5G2eHXjraISeq3/d88+sN+oVXT90I=
 github.com/tierklinik-dobersberg/apis v0.54.1/go.mod h1:8O+3EIeKQZVtWeS5cPAvUDDH81pPNiGC6huFxJLqhqM=
+github.com/tierklinik-dobersberg/apis v0.55.0 h1:+KRIZOCS6eG+Md3LLBGGZaxNx6v8fEiE7PxGY6Ld/M4=
+github.com/tierklinik-dobersberg/apis v0.55.0/go.mod h1:8O+3EIeKQZVtWeS5cPAvUDDH81pPNiGC6huFxJLqhqM=
 github.com/tierklinik-dobersberg/cis v1.6.0 h1:J/Lx8ro4pcSkr4M0ePdheo8LfZtdf7e1C9BxXB+YdX4=
 github.com/tierklinik-dobersberg/cis v1.6.0/go.mod h1:m88TzAi8UspXJ3Ac18vsUgOznuR7/7eHBSPmmPQMx1w=
 github.com/tierklinik-dobersberg/logger v0.4.0 h1:uD7lFkkTDeqOngjF7ybSUbuk6MFgwNSajwBAZJaEMVw=
