@@ -31,46 +31,49 @@ func NewHolidayService(country string) *HolidayService {
 }
 
 func holidayToProto(ctx context.Context, p PublicHoliday) *calendarv1.PublicHoliday {
-	var protoType calendarv1.HolidayType
+	var additional []calendarv1.HolidayType
+	protoType := calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
 
 	if slices.Contains(p.Types, "Public") {
 		protoType = calendarv1.HolidayType_PUBLIC
-	} else {
-		// FIXME(ppacher): Public already has priority but this is a bit flanky
-		for _, pType := range p.Types {
-			switch pType {
-			case "Public":
-				protoType = calendarv1.HolidayType_PUBLIC
-			case "Bank":
-				protoType = calendarv1.HolidayType_BANK
-			case "School":
-				protoType = calendarv1.HolidayType_SCHOOL
-			case "Authorities":
-				protoType = calendarv1.HolidayType_AUTHORITIES
-			case "Optional":
-				protoType = calendarv1.HolidayType_OPTIONAL
-			case "Observance":
-				protoType = calendarv1.HolidayType_OBSERVANCE
-			default:
-				log.L(ctx).Error("Found unsupported public holiday type", "type", pType)
+	}
 
-				protoType = calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED
-
-				continue
-			}
-
-			break
+	for _, pType := range p.Types {
+		var p calendarv1.HolidayType
+		switch pType {
+		case "Public":
+			p = calendarv1.HolidayType_PUBLIC
+		case "Bank":
+			p = calendarv1.HolidayType_BANK
+		case "School":
+			p = calendarv1.HolidayType_SCHOOL
+		case "Authorities":
+			p = calendarv1.HolidayType_AUTHORITIES
+		case "Optional":
+			p = calendarv1.HolidayType_OPTIONAL
+		case "Observance":
+			p = calendarv1.HolidayType_OBSERVANCE
+		default:
+			log.L(ctx).Error("Found unsupported public holiday type", "type", pType)
+			continue
 		}
+
+		if protoType == calendarv1.HolidayType_HOLIDAY_TYPE_UNSPECIFIED {
+			protoType = p
+		}
+
+		additional = append(additional, p)
 	}
 
 	return &calendarv1.PublicHoliday{
-		Date:        p.Date,
-		LocalName:   p.LocalName,
-		Name:        p.Name,
-		CountryCode: p.CountryCode,
-		Fixed:       p.Fixed,
-		Global:      p.Global,
-		Type:        protoType,
+		Date:            p.Date,
+		LocalName:       p.LocalName,
+		Name:            p.Name,
+		CountryCode:     p.CountryCode,
+		Fixed:           p.Fixed,
+		Global:          p.Global,
+		Type:            protoType,
+		AdditionalTypes: additional,
 	}
 }
 
@@ -91,7 +94,12 @@ func (svc *HolidayService) GetHoliday(ctx context.Context, req *connect.Request[
 			continue
 		}
 
-		result = append(result, holidayToProto(ctx, p))
+		proto := holidayToProto(ctx, p)
+		if req.Msg.PublicHolidaysOnly && proto.Type != calendarv1.HolidayType_PUBLIC {
+			continue
+		}
+
+		result = append(result, proto)
 	}
 
 	return connect.NewResponse(&calendarv1.GetHolidayResponse{
@@ -111,6 +119,11 @@ func (svc *HolidayService) IsHoliday(ctx context.Context, req *connect.Request[c
 	isHoliday, holiday, err := svc.getter.IsHoliday(ctx, svc.country, t)
 	if err != nil {
 		return nil, err
+	}
+
+	if isHoliday && req.Msg.PublicHolidaysOnly && !slices.Contains(holiday.Types, "Public") {
+		isHoliday = false
+		holiday = nil
 	}
 
 	res := &calendarv1.IsHolidayResponse{
